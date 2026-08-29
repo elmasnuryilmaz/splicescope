@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "splicescope"
+version = "0.1.0"
+description = "Detect, quantify and characterize alternative and cryptic splicing events from splice junctions."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Elmasnur Yılmaz", email = "elmasnrylmz@gmail.com" }]
+keywords = ["bioinformatics", "RNA-seq", "alternative-splicing", "cryptic-exons", "transcriptomics"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Intended Audience :: Science/Research",
+  "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+dependencies = [
+  "numpy>=1.23",
+  "pandas>=1.5",
+  "scipy>=1.9",
+  "matplotlib>=3.6",
+  "scikit-learn>=1.2",
+]
+
+[project.optional-dependencies]
+app = ["streamlit>=1.28"]
+dev = ["pytest>=7", "ruff>=0.1", "pytest-cov>=4"]
+
+[project.scripts]
+splicescope = "splicescope.cli:main"
+
+[project.urls]
+Homepage = "https://elmasnuryilmaz.github.io"
+Repository = "https://github.com/elmasnuryilmaz/splicescope"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

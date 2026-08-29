@@ -87,12 +87,18 @@ junction that shares the downstream *known* acceptor, up-regulated in one condit
 background of canonical introns and noise. An optional `label_noise` reflects imperfect
 curation so the ML task is realistically hard rather than trivially separable.
 
+> **Formal definitions** — the Ψ metric, the differential-splicing statistics, the
+> classifier's leakage-free evaluation protocol and the simulation model are all
+> specified in **[docs/METHODS.md](docs/METHODS.md)**.
+
 ## Scaling & exploring
 
 - **`nextflow/`** — a DSL2 pipeline that runs the same steps across many samples on a
   cluster or in containers (`nextflow run nextflow/main.nf -profile test`).
 - **`app/streamlit_app.py`** — an interactive dashboard to browse junction classes,
-  the volcano and ranked cryptic candidates (`streamlit run app/streamlit_app.py`).
+  the volcano and ranked cryptic candidates (`pip install -e ".[app]"` then
+  `streamlit run app/streamlit_app.py`). Deploy-ready for Streamlit Community Cloud —
+  point it at `app/streamlit_app.py`.
 
 ## Testing
 
@@ -110,6 +116,13 @@ model card is explicit that the classifier should be retrained on curated labels
 validated on held-out genes before any real-data use. Ψ here is splice-site *usage*, a
 deliberately model-free proxy; event-level PSI (cassette exons, etc.) is a natural
 extension.
+
+## Cite
+
+If this project is useful, please cite it (see [`CITATION.cff`](CITATION.cff)):
+
+> Yılmaz, E. (2026). *splicescope: detecting and characterizing cryptic splicing from
+> splice junctions* (v0.1.0). https://github.com/elmasnuryilmaz/splicescope
 
 ## License
 

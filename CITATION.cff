@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "splicescope: detecting and characterizing cryptic splicing from splice junctions"
+abstract: >-
+  splicescope turns splice junctions and a reference annotation into a junction
+  taxonomy, model-free splice-site usage (Psi), differential-splicing tests, and a
+  cross-validated classifier that prioritises genuine cryptic-splicing events over
+  noise. It ships with a Nextflow pipeline, a Streamlit dashboard, tests and CI.
+type: software
+authors:
+  - family-names: "Yılmaz"
+    given-names: "Elmasnur"
+    orcid: "https://orcid.org/0000-0001-9711-0203"
+    email: "elmasnrylmz@gmail.com"
+version: "0.1.0"
+date-released: "2026-08-27"
+license: MIT
+repository-code: "https://github.com/elmasnuryilmaz/splicescope"
+url: "https://elmasnuryilmaz.github.io"
+keywords:
+  - bioinformatics
+  - RNA-seq
+  - alternative splicing
+  - cryptic exons
+  - transcriptomics
+  - machine learning
+  - reproducible research

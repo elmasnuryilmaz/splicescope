@@ -1,0 +1,3 @@
+# Deployment (e.g. Streamlit Community Cloud) — installs the package with the
+# Streamlit dashboard extra. For development use `pip install -e ".[dev]"` instead.
+.[app]

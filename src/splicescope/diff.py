@@ -39,17 +39,22 @@ def differential_splicing(
     groups: dict[str, str],
     value: str = "psi_donor",
     min_samples: int = 2,
+    key: list[str] | None = None,
 ) -> pd.DataFrame:
-    """Test each junction for differential donor usage between two conditions.
+    """Test each junction (or event) for differential Ψ between two conditions.
 
     Parameters
     ----------
-    psi_df : output of :func:`splicescope.quantify.compute_psi`.
+    psi_df : a long Ψ table (e.g. from :func:`splicescope.quantify.compute_psi`
+        or :func:`splicescope.events.event_psi`).
     groups : mapping ``sample -> condition``; exactly two conditions expected.
     value : which Ψ column to test.
     min_samples : minimum informative (non-NaN) samples required *per group*.
+    key : grouping columns identifying a testable unit; defaults to the junction
+        coordinates ``[chrom, start, end, strand]``. Pass ``["event_id"]`` for
+        event-level tests.
 
-    Returns one row per junction, sorted by q-value.
+    Returns one row per unit, sorted by q-value.
     """
     conditions = sorted(set(groups.values()))
     if len(conditions) != 2:
@@ -58,11 +63,14 @@ def differential_splicing(
 
     df = psi_df.copy()
     df["condition"] = df["sample"].map(groups)
-    key = ["chrom", "start", "end", "strand"]
-    extra = [c for c in ("gene_id", "sclass") if c in df.columns]
+    key = key or ["chrom", "start", "end", "strand"]
+    extra = [
+        c for c in ("gene_id", "sclass", "event_type") if c in df.columns and c not in key
+    ]
 
     records = []
     for junc, sub in df.groupby(key, observed=True):
+        junc = junc if isinstance(junc, tuple) else (junc,)
         a = sub.loc[sub["condition"] == a_name, value].dropna().to_numpy()
         b = sub.loc[sub["condition"] == b_name, value].dropna().to_numpy()
         if len(a) < min_samples or len(b) < min_samples:

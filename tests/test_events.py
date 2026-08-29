@@ -1,15 +1,20 @@
 import numpy as np
+import pandas as pd
 
 from splicescope.annotate import annotate_junctions
 from splicescope.diff import differential_splicing, significant
-from splicescope.events import cassette_psi, detect_cassette_events
+from splicescope.events import (
+    cassette_psi,
+    detect_alt_ss_events,
+    detect_cassette_events,
+    detect_events,
+    event_psi,
+)
 from splicescope.simulate import simulate_dataset
 
 
 def test_detect_simple_cassette():
     # three junctions forming one cassette event on + strand
-    import pandas as pd
-
     obs = pd.DataFrame(
         [
             ("chr1", 100, 300, "+", 40, "s1"),  # skip: donor 100, acceptor 300
@@ -26,8 +31,6 @@ def test_detect_simple_cassette():
 
 
 def test_cassette_psi_formula():
-    import pandas as pd
-
     obs = pd.DataFrame(
         [
             ("chr1", 100, 300, "+", 20, "s1"),  # skip = 20
@@ -54,4 +57,41 @@ def test_cassette_events_on_simulation():
 
     diff = differential_splicing(psi, ds.groups, value="psi_cassette")
     # cryptic exons are up-regulated in B, so some events are differentially included
+    assert not significant(diff, q=0.1, min_delta=0.05).empty
+
+
+def test_detect_a5ss_and_a3ss():
+    # A5SS: two donors share acceptor 300; A3SS: two acceptors share donor 100
+    obs = pd.DataFrame(
+        [
+            ("chr1", 100, 300, "+", 40, "s1"),  # canonical
+            ("chr1", 140, 300, "+", 20, "s1"),  # alt donor  -> A5SS at acceptor 300
+            ("chr1", 100, 260, "+", 20, "s1"),  # alt acceptor -> A3SS at donor 100
+        ],
+        columns=["chrom", "start", "end", "strand", "count", "sample"],
+    )
+    a5 = detect_alt_ss_events(obs, "A5SS")
+    a3 = detect_alt_ss_events(obs, "A3SS")
+    assert (a5["event_type"] == "A5SS").all() and len(a5) == 1
+    assert (a3["event_type"] == "A3SS").all() and len(a3) == 1
+    # A5SS inclusion is the proximal donor (140, closer to acceptor 300)
+    assert a5.iloc[0]["incl_start"] == 140
+
+
+def test_unified_events_and_event_level_differential():
+    ds = simulate_dataset(
+        n_genes=16, n_per_group=6, cryptic_fraction=0.5, alt_ss_fraction=0.8, seed=4
+    )
+    annotated = annotate_junctions(ds.observed, ds.known)
+    events = detect_events(annotated)
+    kinds = set(events["event_type"])
+    assert {"SE", "A5SS", "A3SS"} & kinds  # at least the injected types appear
+    assert kinds <= {"SE", "A5SS", "A3SS"}
+
+    psi = event_psi(annotated, events, min_reads=5)
+    vals = psi["psi"].dropna()
+    assert ((vals >= 0) & (vals <= 1)).all()
+
+    diff = differential_splicing(psi, ds.groups, value="psi", key=["event_id"])
+    assert "event_type" in diff.columns
     assert not significant(diff, q=0.1, min_delta=0.05).empty

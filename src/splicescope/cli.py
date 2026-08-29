@@ -21,7 +21,10 @@ def _cmd_simulate(args: argparse.Namespace) -> int:
     from .simulate import simulate_dataset, write_dataset
 
     ds = simulate_dataset(
-        n_genes=args.genes, n_per_group=args.replicates, seed=args.seed
+        n_genes=args.genes,
+        n_per_group=args.replicates,
+        alt_ss_fraction=args.alt_ss,
+        seed=args.seed,
     )
     out = write_dataset(ds, args.outdir)
     n_junc = ds.observed.drop_duplicates(["chrom", "start", "end", "strand"]).shape[0]
@@ -71,24 +74,25 @@ def _cmd_run(args: argparse.Namespace) -> int:
         _plot.plot_volcano(diff, ax=ax)
         _plot.savefig(fig, figs / "volcano.png")
 
-    # event-level: cassette-exon PSI and its differential inclusion
+    # event-level: cassette (SE), A5SS and A3SS events with rMATS-style PSI
     from . import events as _events
 
-    evs = _events.detect_cassette_events(annotated)
+    evs = _events.detect_events(annotated)
     if not evs.empty:
-        evs.to_csv(outdir / "cassette_events.tsv", sep="\t", index=False)
-        cpsi = _events.cassette_psi(annotated, evs, min_reads=args.min_reads)
-        cdiff = _diff.differential_splicing(cpsi, groups, value="psi_cassette")
-        cdiff.to_csv(outdir / "cassette_differential.tsv", sep="\t", index=False)
+        evs.to_csv(outdir / "events.tsv", sep="\t", index=False)
+        epsi = _events.event_psi(annotated, evs, min_reads=args.min_reads)
+        ediff = _diff.differential_splicing(epsi, groups, value="psi", key=["event_id"])
+        ediff.to_csv(outdir / "event_differential.tsv", sep="\t", index=False)
+        by_type = evs["event_type"].value_counts().to_dict()
         print(
-            f"[run] {len(evs)} cassette-exon events; "
-            f"{len(_diff.significant(cdiff))} differentially spliced (ΔΨ)"
+            f"[run] {len(evs)} events {by_type}; "
+            f"{len(_diff.significant(ediff))} differentially spliced (ΔΨ)"
         )
-        if not cdiff.empty:
+        if not ediff.empty:
             fig, ax = _plot.plt.subplots(figsize=(5, 4))
-            _plot.plot_volcano(cdiff, ax=ax)
-            ax.set_title("Differential cassette-exon inclusion")
-            _plot.savefig(fig, figs / "cassette_volcano.png")
+            _plot.plot_volcano(ediff, ax=ax)
+            ax.set_title("Differential exon inclusion (SE / A5SS / A3SS)")
+            _plot.savefig(fig, figs / "event_volcano.png")
 
     # cryptic ML (only if truth labels are available, e.g. simulated data)
     if "is_cryptic_truth" in psi.columns:
@@ -120,6 +124,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--outdir", required=True)
     s.add_argument("--genes", type=int, default=8)
     s.add_argument("--replicates", type=int, default=4)
+    s.add_argument(
+        "--alt-ss", type=float, default=0.4, help="fraction of genes with an A5SS/A3SS event"
+    )
     s.add_argument("--seed", type=int, default=0)
     s.set_defaults(func=_cmd_simulate)
 

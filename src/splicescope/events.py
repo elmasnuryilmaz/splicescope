@@ -34,7 +34,10 @@ from collections import defaultdict
 
 import pandas as pd
 
+from .io import donor_acceptor
+
 EVENT_KEY = "event_id"
+EVENT_TYPES = ("SE", "A5SS", "A3SS")
 
 
 def _unique_junctions(annotated: pd.DataFrame) -> pd.DataFrame:
@@ -79,7 +82,8 @@ def detect_cassette_events(annotated: pd.DataFrame) -> pd.DataFrame:
                 seen.add(key)
                 events.append(
                     {
-                        "event_id": f"{c}:{s3}-{e3}:{st}@{exon_start}-{exon_end}",
+                        "event_id": f"SE:{c}:{s3}-{e3}:{st}@{exon_start}-{exon_end}",
+                        "event_type": "SE",
                         "chrom": c,
                         "strand": st,
                         "gene_id": gene_of.get((c, s3, e3, st)),
@@ -142,6 +146,147 @@ def cassette_psi(
                     "skip_reads": float(skip),
                     "event_id": ev.event_id,
                     "gene_id": ev.gene_id,
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def _with_sites(annotated: pd.DataFrame) -> pd.DataFrame:
+    df = annotated.copy()
+    da = [
+        donor_acceptor(s, e, st)
+        for s, e, st in zip(df["start"], df["end"], df["strand"], strict=False)
+    ]
+    df["donor"] = [d for d, _ in da]
+    df["acceptor"] = [a for _, a in da]
+    return df
+
+
+def detect_alt_ss_events(
+    annotated: pd.DataFrame, kind: str, exclude: set | None = None
+) -> pd.DataFrame:
+    """Detect alternative 5′ (``kind="A5SS"``) or 3′ (``kind="A3SS"``) splice-site events.
+
+    An A5SS event is a splice acceptor served by two or more donors; A3SS is the
+    mirror (one donor, several acceptors). The *inclusion* isoform is the one whose
+    variable site sits closest to the shared site (the longer exon), following the
+    rMATS convention. One event is emitted per shared site with ≥2 alternatives.
+
+    ``exclude`` is a set of ``(chrom, start, end, strand)`` junctions to ignore —
+    used to keep cassette-exon inclusion junctions from being re-reported as
+    alt-splice-site events.
+    """
+    if kind not in ("A5SS", "A3SS"):
+        raise ValueError("kind must be 'A5SS' or 'A3SS'")
+    shared, variable = ("acceptor", "donor") if kind == "A5SS" else ("donor", "acceptor")
+    exclude = exclude or set()
+
+    uniq = _with_sites(_unique_junctions(annotated))
+    groups: dict[tuple, list] = defaultdict(list)
+    for row in uniq.itertuples(index=False):
+        if (row.chrom, row.start, row.end, row.strand) in exclude:
+            continue
+        groups[(row.chrom, getattr(row, shared), row.strand)].append(row)
+
+    events = []
+    for (chrom, site, strand), members in groups.items():
+        if len({getattr(m, variable) for m in members}) < 2:
+            continue
+        incl = min(members, key=lambda m: abs(getattr(m, variable) - site))
+        events.append(
+            {
+                "event_id": f"{kind}:{chrom}:{site}:{strand}",
+                "event_type": kind,
+                "chrom": chrom,
+                "strand": strand,
+                "gene_id": getattr(incl, "gene_id", None),
+                "site_pos": site,
+                "site_kind": shared,
+                "incl_start": incl.start,
+                "incl_end": incl.end,
+                "n_alternatives": len(members),
+            }
+        )
+    return pd.DataFrame(events)
+
+
+def detect_events(annotated: pd.DataFrame, types: tuple[str, ...] = EVENT_TYPES) -> pd.DataFrame:
+    """Detect all requested event types and return them in one typed table.
+
+    Cassette (SE) events are detected first; the junctions they use are then
+    excluded from A5SS/A3SS detection so the same signal is not double-reported.
+    """
+    parts = []
+    se_junctions: set = set()
+    if "SE" in types:
+        se = detect_cassette_events(annotated)
+        parts.append(se)
+        for e in se.itertuples(index=False):
+            se_junctions.add((e.chrom, e.inc1_start, e.inc1_end, e.strand))
+            se_junctions.add((e.chrom, e.inc2_start, e.inc2_end, e.strand))
+            se_junctions.add((e.chrom, e.skip_start, e.skip_end, e.strand))
+    if "A5SS" in types:
+        parts.append(detect_alt_ss_events(annotated, "A5SS", exclude=se_junctions))
+    if "A3SS" in types:
+        parts.append(detect_alt_ss_events(annotated, "A3SS", exclude=se_junctions))
+    parts = [p for p in parts if not p.empty]
+    if not parts:
+        return pd.DataFrame(columns=["event_id", "event_type", "chrom", "strand", "gene_id"])
+    return pd.concat(parts, ignore_index=True)
+
+
+def event_psi(annotated: pd.DataFrame, events: pd.DataFrame, min_reads: int = 10) -> pd.DataFrame:
+    """Per-sample PSI for every event, dispatched by ``event_type``.
+
+    Returns a long table keyed by ``event_id`` (feed to
+    :func:`splicescope.diff.differential_splicing` with ``key=["event_id"]``).
+    """
+    long_cols = ["event_id", "event_type", "gene_id", "sample", "psi", "inc_reads", "total_reads"]
+    if events.empty:
+        return pd.DataFrame(columns=long_cols)
+
+    df = _with_sites(annotated)
+    counts = (
+        df.groupby(["chrom", "start", "end", "strand", "sample"], observed=True)["count"]
+        .sum()
+        .to_dict()
+    )
+    acc_tot = df.groupby(["chrom", "acceptor", "strand", "sample"], observed=True)["count"].sum()
+    don_tot = df.groupby(["chrom", "donor", "strand", "sample"], observed=True)["count"].sum()
+    acc_tot, don_tot = acc_tot.to_dict(), don_tot.to_dict()
+    samples = sorted(df["sample"].unique())
+
+    rows = []
+    for ev in events.itertuples(index=False):
+        for sample in samples:
+            if ev.event_type == "SE":
+                i1 = counts.get(
+                    (ev.chrom, int(ev.inc1_start), int(ev.inc1_end), ev.strand, sample), 0
+                )
+                i2 = counts.get(
+                    (ev.chrom, int(ev.inc2_start), int(ev.inc2_end), ev.strand, sample), 0
+                )
+                skip = counts.get(
+                    (ev.chrom, int(ev.skip_start), int(ev.skip_end), ev.strand, sample), 0
+                )
+                inclusion = (i1 + i2) / 2.0
+                total = inclusion + skip
+            else:  # A5SS / A3SS
+                inclusion = counts.get(
+                    (ev.chrom, int(ev.incl_start), int(ev.incl_end), ev.strand, sample), 0
+                )
+                site_tot = acc_tot if ev.event_type == "A5SS" else don_tot
+                total = site_tot.get((ev.chrom, int(ev.site_pos), ev.strand, sample), 0)
+            psi = inclusion / total if total >= min_reads else float("nan")
+            rows.append(
+                {
+                    "event_id": ev.event_id,
+                    "event_type": ev.event_type,
+                    "gene_id": ev.gene_id,
+                    "sample": sample,
+                    "psi": psi,
+                    "inc_reads": float(inclusion),
+                    "total_reads": float(total),
                 }
             )
     return pd.DataFrame(rows)

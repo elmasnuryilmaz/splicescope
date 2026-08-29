@@ -69,6 +69,42 @@ def plot_importance(importances, ax=None):
     return ax
 
 
+_EVENT_COLORS = {"SE": _ACCENT, "A5SS": _ACCENT2, "A3SS": _CYAN}
+
+
+def plot_event_summary(events, ax=None):
+    """Bar chart of detected events per type (SE / A5SS / A3SS)."""
+    if ax is None:
+        _, ax = plt.subplots(figsize=(5, 3.2))
+    order = ["SE", "A5SS", "A3SS"]
+    counts = events["event_type"].value_counts().reindex(order, fill_value=0)
+    ax.bar(order, counts.values, color=[_EVENT_COLORS[t] for t in order])
+    ax.set_ylabel("events")
+    ax.set_title("Splicing events by type")
+    _style(ax)
+    return ax
+
+
+def plot_event_volcano(ediff, q: float = 0.05, min_delta: float = 0.1, ax=None):
+    """ΔΨ volcano for events, coloured by event type."""
+    if ax is None:
+        _, ax = plt.subplots(figsize=(5, 4))
+    d = ediff.dropna(subset=["qvalue", "delta_psi"])
+    y = -np.log10(d["qvalue"].clip(lower=1e-300))
+    for etype, color in _EVENT_COLORS.items():
+        m = d["event_type"] == etype
+        ax.scatter(d.loc[m, "delta_psi"], y[m], s=22, color=color, alpha=0.85, label=etype)
+    ax.axhline(-np.log10(q), ls="--", lw=0.8, color="#888")
+    ax.axvline(min_delta, ls="--", lw=0.8, color="#888")
+    ax.axvline(-min_delta, ls="--", lw=0.8, color="#888")
+    ax.set_xlabel("ΔΨ (condition B − A)")
+    ax.set_ylabel("−log10 q-value")
+    ax.set_title("Differential exon inclusion")
+    ax.legend(frameon=False, fontsize=8, title="event")
+    _style(ax)
+    return ax
+
+
 def plot_roc(y_true, scores, ax=None):
     """ROC curve from labels and scores."""
     from sklearn.metrics import roc_auc_score, roc_curve

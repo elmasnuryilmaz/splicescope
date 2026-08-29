@@ -11,7 +11,7 @@ Public API
 - :func:`splicescope.annotate.annotate_junctions` – classify observed junctions
 - :func:`splicescope.quantify.compute_psi` – splice-site usage (Ψ)
 - :func:`splicescope.diff.differential_splicing` – ΔΨ between conditions
-- :func:`splicescope.events.detect_cassette_events` – cassette exons + event-level PSI
+- :func:`splicescope.events.detect_events` – SE / A5SS / A3SS events + event-level PSI
 - :func:`splicescope.cryptic.extract_features` – features for cryptic-event calling
 - :func:`splicescope.ml.CrypticClassifier` – learn to separate cryptic events from noise
 - :func:`splicescope.simulate.simulate_dataset` – synthetic ground-truth data
@@ -19,6 +19,6 @@ Public API
 
 from __future__ import annotations
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = ["__version__"]

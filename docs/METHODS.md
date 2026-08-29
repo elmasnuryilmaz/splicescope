@@ -75,7 +75,20 @@ $$\text{inclusion} = \tfrac{1}{2}\big(\mathrm{count}(\text{inc}_1) + \mathrm{cou
 Detection uses the coordinate pattern skip `(s₃, e₃)`, inc₁ `(s₃, e₁)` with `e₁ < e₃`,
 inc₂ `(s₂, e₃)` with `s₂ > s₃` and `e₁ < s₂`; the cassette exon is `[e₁+1, s₂-1]`. This
 pattern is strand-independent (only the strand must match). Event-level ΔΨ between
-conditions reuses the differential test of §5.
+conditions reuses the differential test of §5 (keyed by `event_id`).
+
+**Alternative 5′/3′ splice sites (A5SS / A3SS).** An A5SS event is a splice *acceptor*
+served by two or more *donors*; A3SS is the mirror (one donor, several acceptors). The
+inclusion isoform is the one whose variable site is closest to the shared site (the longer
+exon), per the rMATS convention, and Ψ is that isoform's share of all reads at the shared
+site. Junctions already used by a cassette event are excluded from A5SS/A3SS detection so
+the same signal is not reported twice.
+
+**Intron retention (RI) is out of scope by design.** Retention is defined by *reads inside
+the intron*, which junction counts do not carry — quantifying it requires intronic
+coverage from the BAM/bigWig. Rather than approximate it unreliably, `splicescope` reports
+only what junctions can support (SE, A5SS, A3SS); RI is a natural extension once coverage
+is available.
 
 ## 6. Feature engineering for cryptic calling
 

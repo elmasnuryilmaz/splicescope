@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/) and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] — 2026-08-29
+
+### Added
+- **Alternative 5′/3′ splice-site events** (A5SS, A3SS) alongside cassette exons, with a
+  unified `detect_events` / `event_psi` API and rMATS-style PSI per type.
+- Cassette-exon junctions are excluded from alt-splice-site detection so shared signal is
+  not double-reported.
+- `differential_splicing` gained a `key` argument for event-level tests (`key=["event_id"]`).
+- Simulator can inject A5SS/A3SS events (`alt_ss_fraction`); CLI `run` writes `events.tsv`,
+  `event_differential.tsv` and an event volcano; the showcase figure is now a 2×3 panel.
+- Tests for A5SS/A3SS detection and event-level differential inclusion.
+
+### Notes
+- Intron retention (RI) is intentionally out of scope: it cannot be quantified from
+  junctions alone (it needs intronic read coverage). Documented in METHODS.
+
 ## [0.2.0] — 2026-08-29
 
 ### Added

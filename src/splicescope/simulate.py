@@ -38,6 +38,7 @@ def simulate_dataset(
     exons_per_gene: int = 5,
     n_per_group: int = 4,
     cryptic_fraction: float = 0.5,
+    alt_ss_fraction: float = 0.0,
     label_noise: float = 0.0,
     seed: int = 0,
 ) -> SimulatedDataset:
@@ -123,6 +124,22 @@ def simulate_dataset(
         motif = "GT/AG" if rng.random() > 0.15 else _NONCANONICAL[rng.integers(len(_NONCANONICAL))]
         emit(i_start, c_start - 1, motif, 1, incl)  # novel_acceptor (shares known donor)
         emit(c_end + 1, i_end, motif, 1, incl)      # novel_donor (shares known acceptor)
+
+    # 2b) alternative 5′/3′ splice-site events (B-upregulated alternative usage).
+    alt_genes = [g for g in gene_introns if rng.random() < alt_ss_fraction]
+    for gene_id in alt_genes:
+        introns = gene_introns[gene_id]
+        if not introns:
+            continue
+        i_start, i_end = introns[rng.integers(len(introns))]
+        if i_end - i_start < 120:
+            continue
+        delta = int(rng.integers(20, 60))
+        alt = {s: int(rng.poisson(50 if groups[s] == "B" else 12)) for s in samples}
+        if rng.random() < 0.5:
+            emit(i_start + delta, i_end, "GT/AG", 0, alt)  # A5SS: alt donor, shared acceptor
+        else:
+            emit(i_start, i_end - delta, "GT/AG", 0, alt)  # A3SS: shared donor, alt acceptor
 
     # 3) noise novel junctions — mostly sporadic/low, but a fraction mimic real
     # events (canonical motif, recurrent support) so classes overlap, truth=0.

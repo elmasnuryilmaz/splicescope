@@ -39,6 +39,7 @@ def simulate_dataset(
     n_per_group: int = 4,
     cryptic_fraction: float = 0.5,
     alt_ss_fraction: float = 0.0,
+    mxe_fraction: float = 0.0,
     label_noise: float = 0.0,
     seed: int = 0,
 ) -> SimulatedDataset:
@@ -95,9 +96,24 @@ def simulate_dataset(
                 }
             )
 
-    # 1) canonical introns — well expressed everywhere
+    # choose MXE introns up front so their canonical (skipping) junction can be
+    # suppressed — mutually-exclusive exons have no exon-skipping isoform. Guarded
+    # so that mxe_fraction == 0 draws no randomness and leaves the stream untouched.
+    mxe_intron_map: dict[str, tuple[int, int]] = {}
+    if mxe_fraction > 0:
+        for gene_id, introns in gene_introns.items():
+            if rng.random() >= mxe_fraction:
+                continue
+            candidates = [iv for iv in introns if iv[1] - iv[0] >= 300]
+            if candidates:
+                mxe_intron_map[gene_id] = candidates[rng.integers(len(candidates))]
+    mxe_introns = set(mxe_intron_map.values())
+
+    # 1) canonical introns — well expressed everywhere (except MXE introns)
     canonical_base = {}
     for _, i_start, i_end, _, _ in known.itertuples(index=False):
+        if (i_start, i_end) in mxe_introns:
+            continue
         counts = {s: int(rng.poisson(200)) for s in samples}
         canonical_base[(i_start, i_end)] = counts
         emit(i_start, i_end, "GT/AG", 0, counts)
@@ -140,6 +156,20 @@ def simulate_dataset(
             emit(i_start + delta, i_end, "GT/AG", 0, alt)  # A5SS: alt donor, shared acceptor
         else:
             emit(i_start, i_end - delta, "GT/AG", 0, alt)  # A3SS: shared donor, alt acceptor
+
+    # 2c) mutually-exclusive-exon (MXE) events: exon A favoured in condition A,
+    # exon B in condition B, between shared flanking exons (no skipping isoform).
+    for _gene_id, (i_start, i_end) in mxe_intron_map.items():
+        a_start, a_end = i_start + 50, i_start + 90
+        b_start, b_end = i_start + 150, i_start + 190
+        if b_end + 1 >= i_end:
+            continue
+        incl_a = {s: int(rng.poisson(55 if groups[s] == "A" else 15)) for s in samples}
+        incl_b = {s: int(rng.poisson(15 if groups[s] == "A" else 55)) for s in samples}
+        emit(i_start, a_start - 1, "GT/AG", 0, incl_a)  # up -> exon A
+        emit(a_end + 1, i_end, "GT/AG", 0, incl_a)      # exon A -> down
+        emit(i_start, b_start - 1, "GT/AG", 0, incl_b)  # up -> exon B
+        emit(b_end + 1, i_end, "GT/AG", 0, incl_b)      # exon B -> down
 
     # 3) noise novel junctions — mostly sporadic/low, but a fraction mimic real
     # events (canonical motif, recurrent support) so classes overlap, truth=0.

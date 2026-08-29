@@ -84,11 +84,19 @@ exon), per the rMATS convention, and Ψ is that isoform's share of all reads at 
 site. Junctions already used by a cassette event are excluded from A5SS/A3SS detection so
 the same signal is not reported twice.
 
+**Mutually exclusive exons (MXE).** An MXE is two non-overlapping exons, A (upstream) and
+B (downstream), that lie between the *same* upstream donor and downstream acceptor and are
+normally never included together (so, unlike a cassette, there is no exon-skipping
+junction). Each exon is reached by its own inclusion-junction pair; Ψ reports exon A's
+share, `Ψ = incl(A) / (incl(A) + incl(B))`. Detection groups every exon that connects a
+given donor→acceptor pair and emits an MXE when two of them are non-overlapping; junctions
+already claimed by a cassette event are excluded first.
+
 **Intron retention (RI) is out of scope by design.** Retention is defined by *reads inside
 the intron*, which junction counts do not carry — quantifying it requires intronic
 coverage from the BAM/bigWig. Rather than approximate it unreliably, `splicescope` reports
-only what junctions can support (SE, A5SS, A3SS); RI is a natural extension once coverage
-is available.
+the four junction-quantifiable classes (SE, MXE, A5SS, A3SS); RI is a natural extension
+once coverage is available.
 
 ## 6. Feature engineering for cryptic calling
 

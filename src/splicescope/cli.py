@@ -24,6 +24,7 @@ def _cmd_simulate(args: argparse.Namespace) -> int:
         n_genes=args.genes,
         n_per_group=args.replicates,
         alt_ss_fraction=args.alt_ss,
+        mxe_fraction=args.mxe,
         seed=args.seed,
     )
     out = write_dataset(ds, args.outdir)
@@ -127,6 +128,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument(
         "--alt-ss", type=float, default=0.4, help="fraction of genes with an A5SS/A3SS event"
     )
+    s.add_argument("--mxe", type=float, default=0.25, help="fraction of genes with an MXE event")
     s.add_argument("--seed", type=int, default=0)
     s.set_defaults(func=_cmd_simulate)
 

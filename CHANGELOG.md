@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/) and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] — 2026-08-29
+
+### Added
+- **Mutually-exclusive-exon (MXE) events** — two non-overlapping exons between shared
+  flanking exons, with PSI = exon-A share. splicescope now covers 4 of the 5 canonical
+  rMATS event classes (SE, MXE, A5SS, A3SS; RI remains out of scope — needs coverage).
+- MXE junctions are excluded from downstream A5SS/A3SS detection; the simulator can inject
+  MXE events (`mxe_fraction`) and suppresses the skipping isoform for those introns.
+- CLI `simulate --mxe`; the showcase gains MXE in the event-type and event-volcano panels.
+- Tests for MXE detection and event-level differential inclusion.
+
 ## [0.3.0] — 2026-08-29
 
 ### Added

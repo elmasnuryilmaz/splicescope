@@ -37,7 +37,7 @@ import pandas as pd
 from .io import donor_acceptor
 
 EVENT_KEY = "event_id"
-EVENT_TYPES = ("SE", "A5SS", "A3SS")
+EVENT_TYPES = ("SE", "MXE", "A5SS", "A3SS")
 
 
 def _unique_junctions(annotated: pd.DataFrame) -> pd.DataFrame:
@@ -162,6 +162,89 @@ def _with_sites(annotated: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def detect_mxe_events(
+    annotated: pd.DataFrame, max_exon: int = 1000, exclude: set | None = None
+) -> pd.DataFrame:
+    """Detect mutually-exclusive-exon (MXE) events.
+
+    An MXE is two non-overlapping exons, A (upstream) and B (downstream), that sit
+    between the *same* upstream donor ``s`` and downstream acceptor ``e`` — each
+    reached by its own pair of inclusion junctions, and normally never included
+    together. PSI is exon A's share:
+
+        Ψ = incl(A) / (incl(A) + incl(B))
+
+    where ``incl(X) = (count(X_5' junction) + count(X_3' junction)) / 2``.
+    """
+    exclude = exclude or set()
+    uniq = _unique_junctions(annotated)
+    gene_of = {
+        (r.chrom, r.start, r.end, r.strand): getattr(r, "gene_id", None)
+        for r in uniq.itertuples(index=False)
+    }
+    by_cs: dict[tuple, list] = defaultdict(list)
+    for r in uniq.itertuples(index=False):
+        if (r.chrom, r.start, r.end, r.strand) in exclude:
+            continue
+        by_cs[(r.chrom, r.strand)].append(r)
+
+    events, seen = [], set()
+    for (chrom, strand), js in by_cs.items():
+        # every (exon between donor s and acceptor e), grouped by that (s, e) context
+        paths: dict[tuple, list] = defaultdict(list)
+        for j5 in js:
+            for j3 in js:
+                if j3.start <= j5.end:
+                    continue
+                exon_len = j3.start - j5.end - 1
+                if not 1 <= exon_len <= max_exon:
+                    continue
+                paths[(j5.start, j3.end)].append((j5.end + 1, j3.start - 1, j5, j3))
+
+        for (s, e), plist in paths.items():
+            if len(plist) < 2:
+                continue
+            plist.sort(key=lambda p: (p[0], p[1]))
+            emitted = False
+            for i in range(len(plist)):
+                for k in range(i + 1, len(plist)):
+                    a, b = plist[i], plist[k]
+                    if a[1] < b[0]:  # exon A strictly upstream of exon B
+                        key = (chrom, strand, s, e, a[0], a[1], b[0], b[1])
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                        events.append(
+                            {
+                                "event_id": (
+                                    f"MXE:{chrom}:{s}-{e}:{strand}"
+                                    f"@{a[0]}-{a[1]}|{b[0]}-{b[1]}"
+                                ),
+                                "event_type": "MXE",
+                                "chrom": chrom,
+                                "strand": strand,
+                                "gene_id": gene_of.get((chrom, a[2].start, a[2].end, strand)),
+                                "exonA_start": a[0],
+                                "exonA_end": a[1],
+                                "exonB_start": b[0],
+                                "exonB_end": b[1],
+                                "a_j1_start": a[2].start,
+                                "a_j1_end": a[2].end,
+                                "a_j2_start": a[3].start,
+                                "a_j2_end": a[3].end,
+                                "b_j1_start": b[2].start,
+                                "b_j1_end": b[2].end,
+                                "b_j2_start": b[3].start,
+                                "b_j2_end": b[3].end,
+                            }
+                        )
+                        emitted = True
+                        break
+                if emitted:
+                    break
+    return pd.DataFrame(events)
+
+
 def detect_alt_ss_events(
     annotated: pd.DataFrame, kind: str, exclude: set | None = None
 ) -> pd.DataFrame:
@@ -217,18 +300,29 @@ def detect_events(annotated: pd.DataFrame, types: tuple[str, ...] = EVENT_TYPES)
     excluded from A5SS/A3SS detection so the same signal is not double-reported.
     """
     parts = []
-    se_junctions: set = set()
+    used: set = set()
     if "SE" in types:
         se = detect_cassette_events(annotated)
         parts.append(se)
         for e in se.itertuples(index=False):
-            se_junctions.add((e.chrom, e.inc1_start, e.inc1_end, e.strand))
-            se_junctions.add((e.chrom, e.inc2_start, e.inc2_end, e.strand))
-            se_junctions.add((e.chrom, e.skip_start, e.skip_end, e.strand))
+            used.add((e.chrom, e.inc1_start, e.inc1_end, e.strand))
+            used.add((e.chrom, e.inc2_start, e.inc2_end, e.strand))
+            used.add((e.chrom, e.skip_start, e.skip_end, e.strand))
+    if "MXE" in types:
+        mxe = detect_mxe_events(annotated, exclude=used)
+        parts.append(mxe)
+        for e in mxe.itertuples(index=False):
+            for js, je in (
+                (e.a_j1_start, e.a_j1_end),
+                (e.a_j2_start, e.a_j2_end),
+                (e.b_j1_start, e.b_j1_end),
+                (e.b_j2_start, e.b_j2_end),
+            ):
+                used.add((e.chrom, js, je, e.strand))
     if "A5SS" in types:
-        parts.append(detect_alt_ss_events(annotated, "A5SS", exclude=se_junctions))
+        parts.append(detect_alt_ss_events(annotated, "A5SS", exclude=used))
     if "A3SS" in types:
-        parts.append(detect_alt_ss_events(annotated, "A3SS", exclude=se_junctions))
+        parts.append(detect_alt_ss_events(annotated, "A3SS", exclude=used))
     parts = [p for p in parts if not p.empty]
     if not parts:
         return pd.DataFrame(columns=["event_id", "event_type", "chrom", "strand", "gene_id"])
@@ -271,6 +365,21 @@ def event_psi(annotated: pd.DataFrame, events: pd.DataFrame, min_reads: int = 10
                 )
                 inclusion = (i1 + i2) / 2.0
                 total = inclusion + skip
+            elif ev.event_type == "MXE":
+                a1 = counts.get(
+                    (ev.chrom, int(ev.a_j1_start), int(ev.a_j1_end), ev.strand, sample), 0
+                )
+                a2 = counts.get(
+                    (ev.chrom, int(ev.a_j2_start), int(ev.a_j2_end), ev.strand, sample), 0
+                )
+                b1 = counts.get(
+                    (ev.chrom, int(ev.b_j1_start), int(ev.b_j1_end), ev.strand, sample), 0
+                )
+                b2 = counts.get(
+                    (ev.chrom, int(ev.b_j2_start), int(ev.b_j2_end), ev.strand, sample), 0
+                )
+                inclusion = (a1 + a2) / 2.0  # exon A
+                total = inclusion + (b1 + b2) / 2.0  # + exon B
             else:  # A5SS / A3SS
                 inclusion = counts.get(
                     (ev.chrom, int(ev.incl_start), int(ev.incl_end), ev.strand, sample), 0

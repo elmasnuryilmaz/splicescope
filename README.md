@@ -12,9 +12,10 @@
 Most of what we want to know about alternative and **cryptic** splicing is already
 present in the splice junctions aligners such as STAR report. `splicescope` turns those
 junctions plus a reference annotation into: a classification of every junction, a
-model-free usage metric (Ψ), **event-level PSI** for cassette exons and alternative
-5′/3′ splice sites (SE / A5SS / A3SS), a differential-splicing test between conditions,
-and a cross-validated classifier that prioritises genuine cryptic events over noise.
+model-free usage metric (Ψ), **event-level PSI** for cassette exons, mutually exclusive
+exons and alternative 5′/3′ splice sites (SE / MXE / A5SS / A3SS), a differential-splicing
+test between conditions, and a cross-validated classifier that prioritises genuine cryptic
+events over noise.
 
 Everything runs out of the box on a built-in synthetic dataset — **no downloads, no
 private data** — which is also what the test suite and CI use.
@@ -22,8 +23,8 @@ private data** — which is also what the test suite and CI use.
 ![splicescope showcase](docs/showcase.png)
 
 *One reproducible command produces every panel above: junction classes, a ΔΨ volcano,
-splicing events by type (SE / A5SS / A3SS), differential exon inclusion, what the cryptic
-classifier keys on, and its cross-validated ROC.*
+splicing events by type (SE / MXE / A5SS / A3SS), differential exon inclusion, what the
+cryptic classifier keys on, and its cross-validated ROC.*
 
 And the classifier degrades **gracefully** as labelling error grows — an honest robustness
 check rather than a single lucky number:
@@ -86,7 +87,7 @@ clf   = CrypticClassifier().evaluate(feats)                 # stratified-CV ROC-
 | **Ingest** | `io` | read STAR `SJ.out.tab`; derive known introns from a GTF |
 | **Annotate** | `annotate` | label each junction: `annotated`, `novel_donor`, `novel_acceptor`, `novel_combination`, `cryptic` |
 | **Quantify** | `quantify` | Ψ = fraction of a splice site's reads flowing through a junction (model-free) |
-| **Events** | `events` | reconstruct cassette exons and compute rMATS-style percent-spliced-in |
+| **Events** | `events` | reconstruct SE / MXE / A5SS / A3SS events and compute rMATS-style percent-spliced-in |
 | **Differential** | `diff` | ΔΨ between two conditions, Mann–Whitney U, Benjamini–Hochberg FDR (junction- or event-level) |
 | **Features** | `cryptic` | intron length, read support, recurrence, motif, distance to known sites … |
 | **Learn** | `ml` | RandomForest + StandardScaler, stratified-CV, permutation importance, model card |

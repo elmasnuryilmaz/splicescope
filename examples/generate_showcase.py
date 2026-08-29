@@ -24,8 +24,8 @@ OUT = Path(__file__).resolve().parent.parent / "docs" / "showcase.png"
 def main() -> None:
     # label_noise mimics imperfect curation, so the ML task is realistically hard
     ds = simulate_dataset(
-        n_genes=20, n_per_group=6, cryptic_fraction=0.6, alt_ss_fraction=0.5,
-        label_noise=0.12, seed=11,
+        n_genes=24, n_per_group=6, cryptic_fraction=0.6, alt_ss_fraction=0.3,
+        mxe_fraction=0.25, label_noise=0.07, seed=11,
     )
 
     annotated = annotate.annotate_junctions(ds.observed, ds.known)

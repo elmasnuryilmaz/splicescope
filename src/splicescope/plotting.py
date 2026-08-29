@@ -69,14 +69,14 @@ def plot_importance(importances, ax=None):
     return ax
 
 
-_EVENT_COLORS = {"SE": _ACCENT, "A5SS": _ACCENT2, "A3SS": _CYAN}
+_EVENT_COLORS = {"SE": _ACCENT, "MXE": "#ffcb47", "A5SS": _ACCENT2, "A3SS": _CYAN}
 
 
 def plot_event_summary(events, ax=None):
-    """Bar chart of detected events per type (SE / A5SS / A3SS)."""
+    """Bar chart of detected events per type (SE / MXE / A5SS / A3SS)."""
     if ax is None:
         _, ax = plt.subplots(figsize=(5, 3.2))
-    order = ["SE", "A5SS", "A3SS"]
+    order = ["SE", "MXE", "A5SS", "A3SS"]
     counts = events["event_type"].value_counts().reindex(order, fill_value=0)
     ax.bar(order, counts.values, color=[_EVENT_COLORS[t] for t in order])
     ax.set_ylabel("events")

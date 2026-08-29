@@ -8,6 +8,7 @@ from splicescope.events import (
     detect_alt_ss_events,
     detect_cassette_events,
     detect_events,
+    detect_mxe_events,
     event_psi,
 )
 from splicescope.simulate import simulate_dataset
@@ -78,15 +79,45 @@ def test_detect_a5ss_and_a3ss():
     assert a5.iloc[0]["incl_start"] == 140
 
 
+def test_detect_mxe_simple():
+    # two non-overlapping exons (A: 150-190, B: 250-290) between donor 100 & acceptor 400
+    obs = pd.DataFrame(
+        [
+            ("chr1", 100, 149, "+", 40, "s1"),  # up -> exon A
+            ("chr1", 191, 400, "+", 40, "s1"),  # exon A -> down
+            ("chr1", 100, 249, "+", 30, "s1"),  # up -> exon B
+            ("chr1", 291, 400, "+", 30, "s1"),  # exon B -> down
+        ],
+        columns=["chrom", "start", "end", "strand", "count", "sample"],
+    )
+    mxe = detect_mxe_events(obs)
+    assert len(mxe) == 1
+    ev = mxe.iloc[0]
+    assert (ev["exonA_start"], ev["exonA_end"]) == (150, 190)
+    assert (ev["exonB_start"], ev["exonB_end"]) == (250, 290)
+
+
+def test_mxe_is_differential():
+    ds = simulate_dataset(n_genes=16, n_per_group=6, mxe_fraction=1.0, seed=6)
+    annotated = annotate_junctions(ds.observed, ds.known)
+    events = detect_events(annotated)
+    assert "MXE" in set(events["event_type"])
+    psi = event_psi(annotated, events, min_reads=5)
+    diff = differential_splicing(psi, ds.groups, value="psi", key=["event_id"])
+    mxe_hits = significant(diff, q=0.1, min_delta=0.1)
+    assert (mxe_hits["event_type"] == "MXE").any()
+
+
 def test_unified_events_and_event_level_differential():
     ds = simulate_dataset(
-        n_genes=16, n_per_group=6, cryptic_fraction=0.5, alt_ss_fraction=0.8, seed=4
+        n_genes=16, n_per_group=6, cryptic_fraction=0.5, alt_ss_fraction=0.8,
+        mxe_fraction=0.5, seed=4,
     )
     annotated = annotate_junctions(ds.observed, ds.known)
     events = detect_events(annotated)
     kinds = set(events["event_type"])
     assert {"SE", "A5SS", "A3SS"} & kinds  # at least the injected types appear
-    assert kinds <= {"SE", "A5SS", "A3SS"}
+    assert kinds <= {"SE", "MXE", "A5SS", "A3SS"}
 
     psi = event_psi(annotated, events, min_reads=5)
     vals = psi["psi"].dropna()

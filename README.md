@@ -5,6 +5,9 @@
 [![CI](https://github.com/elmasnuryilmaz/splicescope/actions/workflows/ci.yml/badge.svg)](https://github.com/elmasnuryilmaz/splicescope/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
+[![Live demo](https://img.shields.io/badge/live%20demo-Streamlit-ff3d81)](https://splicescope-mirsdwuvkvwzvhrj2e2hgs.streamlit.app)
+
+**▶ Try it live:** [splicescope on Streamlit](https://splicescope-mirsdwuvkvwzvhrj2e2hgs.streamlit.app)
 
 Most of what we want to know about alternative and **cryptic** splicing is already
 present in the splice junctions aligners such as STAR report. `splicescope` turns those

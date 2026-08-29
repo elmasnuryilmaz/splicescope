@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/) and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] — 2026-08-29
+
+### Added
+- **Event-level splicing** (`events`): reconstruct cassette (skipped) exons directly from
+  junctions and compute rMATS-style percent-spliced-in (Ψ). Strand-independent detection.
+- `differential_splicing` now works on any Ψ column (e.g. `psi_cassette`), so cassette
+  events get ΔΨ + Mann–Whitney + FDR for free.
+- CLI `run` writes `cassette_events.tsv`, `cassette_differential.tsv` and a
+  `cassette_volcano.png`.
+- Tests for cassette detection, the PSI formula, and end-to-end differential inclusion.
+
 ## [0.1.0] — 2026-08-27
 
 ### Added

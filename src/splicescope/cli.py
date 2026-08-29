@@ -71,6 +71,25 @@ def _cmd_run(args: argparse.Namespace) -> int:
         _plot.plot_volcano(diff, ax=ax)
         _plot.savefig(fig, figs / "volcano.png")
 
+    # event-level: cassette-exon PSI and its differential inclusion
+    from . import events as _events
+
+    evs = _events.detect_cassette_events(annotated)
+    if not evs.empty:
+        evs.to_csv(outdir / "cassette_events.tsv", sep="\t", index=False)
+        cpsi = _events.cassette_psi(annotated, evs, min_reads=args.min_reads)
+        cdiff = _diff.differential_splicing(cpsi, groups, value="psi_cassette")
+        cdiff.to_csv(outdir / "cassette_differential.tsv", sep="\t", index=False)
+        print(
+            f"[run] {len(evs)} cassette-exon events; "
+            f"{len(_diff.significant(cdiff))} differentially spliced (ΔΨ)"
+        )
+        if not cdiff.empty:
+            fig, ax = _plot.plt.subplots(figsize=(5, 4))
+            _plot.plot_volcano(cdiff, ax=ax)
+            ax.set_title("Differential cassette-exon inclusion")
+            _plot.savefig(fig, figs / "cassette_volcano.png")
+
     # cryptic ML (only if truth labels are available, e.g. simulated data)
     if "is_cryptic_truth" in psi.columns:
         feats = _cryptic.extract_features(psi, known)

@@ -84,7 +84,8 @@ clf   = CrypticClassifier().evaluate(feats)                 # stratified-CV ROC-
 | **Ingest** | `io` | read STAR `SJ.out.tab`; derive known introns from a GTF |
 | **Annotate** | `annotate` | label each junction: `annotated`, `novel_donor`, `novel_acceptor`, `novel_combination`, `cryptic` |
 | **Quantify** | `quantify` | Ψ = fraction of a splice site's reads flowing through a junction (model-free) |
-| **Differential** | `diff` | ΔΨ between two conditions, Mann–Whitney U, Benjamini–Hochberg FDR |
+| **Events** | `events` | reconstruct cassette exons and compute rMATS-style percent-spliced-in |
+| **Differential** | `diff` | ΔΨ between two conditions, Mann–Whitney U, Benjamini–Hochberg FDR (junction- or event-level) |
 | **Features** | `cryptic` | intron length, read support, recurrence, motif, distance to known sites … |
 | **Learn** | `ml` | RandomForest + StandardScaler, stratified-CV, permutation importance, model card |
 | **Visualize** | `plotting` | publication-quality panels (headless-safe) |

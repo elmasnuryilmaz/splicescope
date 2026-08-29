@@ -62,6 +62,21 @@ For two conditions A and B and each junction, we compare the per-sample Ψ vecto
 Junctions with fewer than `min_samples` informative replicates per group are skipped.
 "Significant" defaults to `q ≤ 0.05` and `|ΔΨ| ≥ 0.1`.
 
+## 5b. Event-level PSI (cassette exons)
+
+Splice-site usage (§4) is model-free but not an *event*. `events` additionally
+reconstructs the canonical **cassette-exon** event from three junctions that share
+endpoints — two inclusion junctions flanking the exon and one skipping junction across it
+— and computes rMATS-style percent-spliced-in:
+
+$$\text{inclusion} = \tfrac{1}{2}\big(\mathrm{count}(\text{inc}_1) + \mathrm{count}(\text{inc}_2)\big),\qquad
+\Psi = \frac{\text{inclusion}}{\text{inclusion} + \mathrm{count}(\text{skip})}$$
+
+Detection uses the coordinate pattern skip `(s₃, e₃)`, inc₁ `(s₃, e₁)` with `e₁ < e₃`,
+inc₂ `(s₂, e₃)` with `s₂ > s₃` and `e₁ < s₂`; the cassette exon is `[e₁+1, s₂-1]`. This
+pattern is strand-independent (only the strand must match). Event-level ΔΨ between
+conditions reuses the differential test of §5.
+
 ## 6. Feature engineering for cryptic calling
 
 Each novel junction becomes a feature vector:

@@ -23,6 +23,11 @@ private data** — which is also what the test suite and CI use.
 *One reproducible command produces all four panels above: junction classes, a ΔΨ volcano,
 what the cryptic classifier keys on, and its cross-validated ROC.*
 
+And the classifier degrades **gracefully** as labelling error grows — an honest robustness
+check rather than a single lucky number:
+
+<p align="center"><img src="docs/demo.gif" alt="cryptic classifier ROC vs. label noise" width="480"></p>
+
 ---
 
 ## Why it exists

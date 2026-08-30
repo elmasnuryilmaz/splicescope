@@ -84,6 +84,18 @@ clf   = CrypticClassifier().evaluate(feats)                 # stratified-CV ROC-
 
 ## How it works
 
+```mermaid
+flowchart LR
+    A["STAR SJ.out.tab<br/>+ GTF"] --> B["annotate<br/>junction taxonomy"]
+    B --> C["quantify<br/>splice-site usage Ψ"]
+    B --> D["events<br/>SE · MXE · A5SS · A3SS"]
+    C --> E["diff<br/>ΔΨ · Mann–Whitney · FDR"]
+    D --> E
+    E --> F["enrich<br/>pathway ORA"]
+    C --> G["cryptic + ml<br/>cross-validated calls"]
+    E --> H["plotting<br/>volcano · ROC · panels"]
+```
+
 | stage | module | what it does |
 |-------|--------|--------------|
 | **Ingest** | `io` | read STAR `SJ.out.tab`; derive known introns from a GTF |

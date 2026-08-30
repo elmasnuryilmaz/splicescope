@@ -127,6 +127,18 @@ hyper-parameters, the evaluation protocol, metrics, importances, intended use an
 limitations. Scaling is fit inside each CV fold via the pipeline, so there is no
 train/test leakage.
 
+## 7b. Pathway over-representation (ORA)
+
+To ask *which pathways are affected*, `enrich` runs the standard one-sided
+hypergeometric test (equivalent to Fisher's exact) used by clusterProfiler. With `M`
+background genes, a gene set of size `n` (within the background), `N` differentially
+spliced genes, and `k` of them in the set, the enrichment p-value is
+`P(X ≥ k) = hypergeom.sf(k−1, M, n, N)`, with fold enrichment `(k/N)/(n/M)` and
+Benjamini–Hochberg correction across sets. The background is every gene that was tested;
+hits are the genes of significant units. Gene sets are supplied by the user (GMT via
+`io.read_gmt`) — none are bundled, because meaningful enrichment requires real
+annotations, not synthetic ones.
+
 ## 8. Simulation model
 
 To keep the toolkit self-contained and testable, `simulate` generates a small annotated

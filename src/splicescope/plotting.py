@@ -105,6 +105,21 @@ def plot_event_volcano(ediff, q: float = 0.05, min_delta: float = 0.1, ax=None):
     return ax
 
 
+def plot_enrichment(enrich, top: int = 10, ax=None):
+    """Horizontal bar of the most enriched gene sets (−log10 q-value)."""
+    if ax is None:
+        _, ax = plt.subplots(figsize=(6, 3.6))
+    d = enrich.dropna(subset=["qvalue"]).head(top).iloc[::-1]
+    y = -np.log10(d["qvalue"].clip(lower=1e-300))
+    ax.barh(d["term"], y, color=_ACCENT2)
+    ax.axvline(-np.log10(0.05), ls="--", lw=0.8, color="#888")
+    ax.set_xlabel("−log10 q-value")
+    ax.set_title("Enriched gene sets")
+    _style(ax)
+    ax.grid(axis="x", alpha=0.15)
+    return ax
+
+
 def plot_roc(y_true, scores, ax=None):
     """ROC curve from labels and scores."""
     from sklearn.metrics import roc_auc_score, roc_curve

@@ -176,7 +176,25 @@ clf.score_table(feats).head(8)[
 ]
 """),
     ("md", """\
-## 7. Using your own data
+## 7. Which pathways are affected? (ORA)
+
+Given the differentially spliced genes, `enrich` runs a hypergeometric
+over-representation test (the same statistic as clusterProfiler) against any gene sets.
+Here we use a couple of **illustrative** sets; in practice you load real GO / KEGG /
+MSigDB sets with `io.read_gmt("sets.gmt")`.
+"""),
+    ("code", """\
+from splicescope import enrich
+
+sig_genes = diff.significant(ediff, q=0.1, min_delta=0.1)["gene_id"].dropna().unique().tolist()
+gene_sets = {
+    "calcium_signaling (demo)": sig_genes[:4] + ["g19"],
+    "unrelated_pathway (demo)": ["g15", "g16", "g17", "g18"],
+}
+enrich.enrich_differential(ediff, gene_sets, q=0.1, min_delta=0.1)
+"""),
+    ("md", """\
+## 8. Using your own data
 
 Everything above works on real STAR output — just replace the simulator with the readers.
 Given a folder of `*.SJ.out.tab` files, a reference GTF, and a `sample,condition` table:

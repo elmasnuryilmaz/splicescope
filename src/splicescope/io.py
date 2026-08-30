@@ -141,3 +141,22 @@ def read_gtf_junctions(path: str | Path) -> pd.DataFrame:
         return pd.DataFrame(columns=["chrom", "start", "end", "strand", "gene_id"])
     data = [(c, s, e, st, g) for (c, s, e, st), g in rows.items()]
     return pd.DataFrame(data, columns=["chrom", "start", "end", "strand", "gene_id"])
+
+
+def read_gmt(path: str | Path) -> dict[str, list[str]]:
+    """Read a GMT gene-set file into ``{term: [genes]}``.
+
+    GMT lines are tab-separated: ``term<TAB>description<TAB>gene1<TAB>gene2...``.
+    The description column is ignored. Compatible with MSigDB / GO / KEGG exports.
+    """
+    sets: dict[str, list[str]] = {}
+    with open(path) as fh:
+        for line in fh:
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) < 3:
+                continue
+            term = parts[0].strip()
+            genes = [g.strip() for g in parts[2:] if g.strip()]
+            if term and genes:
+                sets[term] = genes
+    return sets

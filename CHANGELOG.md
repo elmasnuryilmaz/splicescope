@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/) and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] — 2026-08-30
+
+### Added
+- **Pathway over-representation analysis** (`enrich`): a hypergeometric/BH-FDR test for
+  gene sets enriched among differentially spliced genes — the same statistic as
+  clusterProfiler, on any `{term: [genes]}` mapping. No gene sets are bundled (real
+  enrichment needs real annotations).
+- GMT gene-set reader (`io.read_gmt`, MSigDB/GO/KEGG-compatible) and an enrichment plot.
+- CLI `run --gene-sets sets.gmt` writes `enrichment.tsv` and a figure.
+- An **executed tutorial notebook** (`examples/tutorial.ipynb`, rebuilt via
+  `examples/_build_tutorial.py`) with a Colab badge.
+- Tests for the ORA math, GMT parsing and end-to-end enrichment.
+
 ## [0.4.0] — 2026-08-29
 
 ### Added

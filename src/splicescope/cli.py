@@ -95,6 +95,20 @@ def _cmd_run(args: argparse.Namespace) -> int:
             ax.set_title("Differential exon inclusion (SE / A5SS / A3SS)")
             _plot.savefig(fig, figs / "event_volcano.png")
 
+    # pathway over-representation (only if the user supplies real gene sets)
+    if args.gene_sets:
+        from . import enrich as _enrich
+
+        gene_sets = _io.read_gmt(args.gene_sets)
+        enr = _enrich.enrich_differential(diff, gene_sets)
+        enr.to_csv(outdir / "enrichment.tsv", sep="\t", index=False)
+        n_sig = int((enr["qvalue"] <= 0.05).sum()) if not enr.empty else 0
+        print(f"[run] enrichment: {len(gene_sets)} sets, {len(enr)} tested, {n_sig} sig (q<=0.05)")
+        if not enr.empty:
+            fig, ax = _plot.plt.subplots(figsize=(6, 3.6))
+            _plot.plot_enrichment(enr, ax=ax)
+            _plot.savefig(fig, figs / "enrichment.png")
+
     # cryptic ML (only if truth labels are available, e.g. simulated data)
     if "is_cryptic_truth" in psi.columns:
         feats = _cryptic.extract_features(psi, known)
@@ -137,6 +151,7 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--gtf", required=True)
     r.add_argument("--groups", required=True, help="TSV with columns sample,condition")
     r.add_argument("--outdir", required=True)
+    r.add_argument("--gene-sets", default=None, help="optional GMT file for pathway enrichment")
     r.add_argument("--min-reads", type=int, default=10)
     r.add_argument("--seed", type=int, default=0)
     r.set_defaults(func=_cmd_run)

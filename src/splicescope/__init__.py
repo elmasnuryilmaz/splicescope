@@ -14,11 +14,12 @@ Public API
 - :func:`splicescope.events.detect_events` – SE / MXE / A5SS / A3SS events + event-level PSI
 - :func:`splicescope.cryptic.extract_features` – features for cryptic-event calling
 - :func:`splicescope.ml.CrypticClassifier` – learn to separate cryptic events from noise
+- :func:`splicescope.enrich.enrich_differential` – pathway over-representation (ORA)
 - :func:`splicescope.simulate.simulate_dataset` – synthetic ground-truth data
 """
 
 from __future__ import annotations
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 __all__ = ["__version__"]

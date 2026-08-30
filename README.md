@@ -93,6 +93,7 @@ clf   = CrypticClassifier().evaluate(feats)                 # stratified-CV ROC-
 | **Differential** | `diff` | ΔΨ between two conditions, Mann–Whitney U, Benjamini–Hochberg FDR (junction- or event-level) |
 | **Features** | `cryptic` | intron length, read support, recurrence, motif, distance to known sites … |
 | **Learn** | `ml` | RandomForest + StandardScaler, stratified-CV, permutation importance, model card |
+| **Enrich** | `enrich` | hypergeometric pathway over-representation (ORA) with BH-FDR, any GMT gene sets |
 | **Visualize** | `plotting` | publication-quality panels (headless-safe) |
 
 The synthetic generator (`simulate`) is biologically faithful: a cryptic exon produces a

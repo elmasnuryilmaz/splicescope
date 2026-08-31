@@ -3,16 +3,18 @@ message: "If you use this software, please cite it as below."
 title: "splicescope: detecting and characterizing cryptic splicing from splice junctions"
 abstract: >-
   splicescope turns splice junctions and a reference annotation into a junction
-  taxonomy, model-free splice-site usage (Psi), differential-splicing tests, and a
-  cross-validated classifier that prioritises genuine cryptic-splicing events over
-  noise. It ships with a Nextflow pipeline, a Streamlit dashboard, tests and CI.
+  taxonomy, model-free splice-site usage (Psi), a count-based differential-splicing
+  test, and a prediction of what each cryptic event does to the protein it encodes:
+  reading frame, premature termination codon and nonsense-mediated decay. Cassette
+  exons and splice-site shifts are both handled. It ships with a Nextflow pipeline,
+  a Streamlit dashboard, a real-data validation suite, tests and CI.
 type: software
 authors:
   - family-names: "Yılmaz"
     given-names: "Elmasnur"
     orcid: "https://orcid.org/0000-0001-9711-0203"
     email: "elmasnrylmz@gmail.com"
-version: "0.5.0"
+version: "0.8.0"
 date-released: "2026-08-30"
 license: MIT
 repository-code: "https://github.com/elmasnuryilmaz/splicescope"

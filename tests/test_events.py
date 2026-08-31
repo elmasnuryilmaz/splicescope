@@ -126,3 +126,34 @@ def test_unified_events_and_event_level_differential():
     diff = differential_splicing(psi, ds.groups, value="psi", key=["event_id"])
     assert "event_type" in diff.columns
     assert not significant(diff, q=0.1, min_delta=0.05).empty
+
+
+def _junction(chrom, start, end, strand="+", sample="s1", count=50, gene="G1"):
+    return {
+        "chrom": chrom, "start": start, "end": end, "strand": strand,
+        "sample": sample, "count": count, "sclass": "cryptic", "gene_id": gene,
+    }
+
+
+def test_mxe_window_keeps_valid_pairs_and_respects_max_exon():
+    """The windowed search must find exactly the pairs the length filter allows."""
+    import pandas as pd
+
+    from splicescope.events import detect_mxe_events
+
+    # Shared donor at 1000 and shared acceptor at 5000, with two candidate exons
+    # (1101-1200 and 2101-2200) reachable through their own junction pairs.
+    rows = [
+        _junction("chr1", 1000, 1100),   # donor -> exon A
+        _junction("chr1", 1201, 5000),   # exon A -> acceptor
+        _junction("chr1", 1000, 2100),   # donor -> exon B
+        _junction("chr1", 2201, 5000),   # exon B -> acceptor
+    ]
+    events = detect_mxe_events(pd.DataFrame(rows))
+    assert len(events) == 1
+    ev = events.iloc[0]
+    assert (ev.exonA_start, ev.exonA_end) == (1101, 1200)
+    assert (ev.exonB_start, ev.exonB_end) == (2101, 2200)
+
+    # An exon longer than max_exon must fall outside the window and find nothing.
+    assert detect_mxe_events(pd.DataFrame(rows), max_exon=50).empty

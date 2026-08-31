@@ -22,17 +22,20 @@ import pandas as pd
 from .io import donor_acceptor
 
 
-def _usage(df: pd.DataFrame, site_cols: list[str], min_reads: int) -> pd.Series:
+def _usage(df: pd.DataFrame, site_cols: list[str], min_reads: int) -> tuple[pd.Series, pd.Series]:
+    """Return ``(usage, totals)``; the totals are the denominator Ψ was formed from."""
     totals = df.groupby(site_cols + ["sample"])["count"].transform("sum")
     usage = df["count"] / totals
     usage[totals < min_reads] = np.nan
-    return usage
+    return usage, totals
 
 
 def compute_psi(annotated: pd.DataFrame, min_reads: int = 10) -> pd.DataFrame:
     """Add ``psi_donor`` and ``psi_acceptor`` columns (per sample) to junctions.
 
-    ``annotated`` must have ``[chrom, start, end, strand, sample, count]``.
+    ``annotated`` must have ``[chrom, start, end, strand, sample, count]``. The
+    matching ``donor_total`` and ``acceptor_total`` denominators are kept so a
+    count-based test can use the reads Ψ was computed from, not just the ratio.
     """
     df = annotated.copy()
     da = [
@@ -41,8 +44,10 @@ def compute_psi(annotated: pd.DataFrame, min_reads: int = 10) -> pd.DataFrame:
     ]
     df["donor"] = [d for d, _ in da]
     df["acceptor"] = [a for _, a in da]
-    df["psi_donor"] = _usage(df, ["chrom", "donor", "strand"], min_reads)
-    df["psi_acceptor"] = _usage(df, ["chrom", "acceptor", "strand"], min_reads)
+    df["psi_donor"], df["donor_total"] = _usage(df, ["chrom", "donor", "strand"], min_reads)
+    df["psi_acceptor"], df["acceptor_total"] = _usage(
+        df, ["chrom", "acceptor", "strand"], min_reads
+    )
     return df
 
 

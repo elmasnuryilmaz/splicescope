@@ -30,6 +30,7 @@ by rMATS-style methods:
 
 from __future__ import annotations
 
+from bisect import bisect_left, bisect_right
 from collections import defaultdict
 
 import pandas as pd
@@ -190,15 +191,18 @@ def detect_mxe_events(
 
     events, seen = [], set()
     for (chrom, strand), js in by_cs.items():
-        # every (exon between donor s and acceptor e), grouped by that (s, e) context
+        # every (exon between donor s and acceptor e), grouped by that (s, e) context.
+        # A candidate exon has length in [1, max_exon], so for a given upstream
+        # junction only downstream junctions starting inside a window of that width
+        # can pair with it. Sorting by start and binary-searching the window keeps
+        # this linear-ish instead of comparing every junction against every other.
+        js_by_start = sorted(js, key=lambda r: r.start)
+        starts = [r.start for r in js_by_start]
         paths: dict[tuple, list] = defaultdict(list)
         for j5 in js:
-            for j3 in js:
-                if j3.start <= j5.end:
-                    continue
-                exon_len = j3.start - j5.end - 1
-                if not 1 <= exon_len <= max_exon:
-                    continue
+            lo = bisect_left(starts, j5.end + 2)
+            hi = bisect_right(starts, j5.end + 1 + max_exon)
+            for j3 in js_by_start[lo:hi]:
                 paths[(j5.start, j3.end)].append((j5.end + 1, j3.start - 1, j5, j3))
 
         for (s, e), plist in paths.items():

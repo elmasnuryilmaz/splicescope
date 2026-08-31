@@ -95,6 +95,15 @@ def _cmd_run(args: argparse.Namespace) -> int:
             ax.set_title("Differential exon inclusion (SE / A5SS / A3SS)")
             _plot.savefig(fig, figs / "event_volcano.png")
 
+    # protein-level consequence of cassette exons (needs an indexed genome)
+    if args.genome and not evs.empty:
+        cons = _consequence_table(evs, args.gtf, args.genome)
+        if cons is None:
+            return 2
+        cons.to_csv(outdir / "consequence.tsv", sep="\t", index=False)
+        counts = cons["consequence_class"].value_counts().to_dict()
+        print(f"[run] consequence for {len(cons)} cassette exons: {counts}")
+
     # pathway over-representation (only if the user supplies real gene sets)
     if args.gene_sets:
         from . import enrich as _enrich
@@ -130,6 +139,46 @@ def _cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def _consequence_table(events, gtf: str, genome: str):
+    """Predict consequences for a table of cassette exons; None on a bad genome."""
+    from .consequence import GenomeFasta, annotate_consequences, load_transcripts
+
+    cassettes = events[events["event_type"] == "SE"].copy() if "event_type" in events else events
+    if cassettes.empty:
+        return cassettes
+    genes = set(cassettes["gene_id"].dropna().astype(str)) if "gene_id" in cassettes else None
+    transcripts = load_transcripts(gtf, genes=genes or None)
+    try:
+        with GenomeFasta(genome) as fasta:
+            return annotate_consequences(
+                cassettes,
+                transcripts,
+                fasta,
+                start_col="exon_start",
+                end_col="exon_end",
+            )
+    except FileNotFoundError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return None
+
+
+def _cmd_consequence(args: argparse.Namespace) -> int:
+    import pandas as pd
+
+    events = pd.read_csv(args.events, sep="\t")
+    missing = {"chrom", "strand", "exon_start", "exon_end"} - set(events.columns)
+    if missing:
+        print(f"error: {args.events} is missing columns {sorted(missing)}", file=sys.stderr)
+        return 2
+    table = _consequence_table(events, args.gtf, args.genome)
+    if table is None:
+        return 2
+    table.to_csv(args.out, sep="\t", index=False)
+    print(f"[consequence] {len(table)} exons -> {args.out}")
+    print(table["consequence_class"].value_counts().to_string())
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="splicescope", description=__doc__.splitlines()[0])
     p.add_argument("--version", action="version", version=f"splicescope {__version__}")
@@ -152,9 +201,23 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--groups", required=True, help="TSV with columns sample,condition")
     r.add_argument("--outdir", required=True)
     r.add_argument("--gene-sets", default=None, help="optional GMT file for pathway enrichment")
+    r.add_argument(
+        "--genome",
+        default=None,
+        help="indexed genome FASTA (.fai required); enables protein-consequence prediction",
+    )
     r.add_argument("--min-reads", type=int, default=10)
     r.add_argument("--seed", type=int, default=0)
     r.set_defaults(func=_cmd_run)
+
+    c = sub.add_parser(
+        "consequence", help="predict frame / PTC / NMD effects for cassette exons"
+    )
+    c.add_argument("--events", required=True, help="TSV with chrom, strand, exon_start, exon_end")
+    c.add_argument("--gtf", required=True)
+    c.add_argument("--genome", required=True, help="indexed genome FASTA (.fai required)")
+    c.add_argument("--out", required=True)
+    c.set_defaults(func=_cmd_consequence)
 
     return p
 

@@ -4,6 +4,115 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/) and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.8.0] — 2026-08-30
+
+### Added
+- **Splice-site shifts are now interpreted**, not just cassette exons. A novel donor
+  or acceptor paired with an annotated site on the other side is resolved against the
+  annotation into the sequence it adds to, or removes from, the neighbouring exon
+  (`junction_change`, `junction_hosts`, `predict_junction_consequence`,
+  `annotate_junction_consequences`). These are the majority of cryptic events reported
+  by junction-level callers: on a published set of 3,548 such junctions, interpretable
+  coverage went from **0% to 96%** (98% of novel donors, 99% of novel acceptors).
+- **Premature stops downstream of the event are found.** Previously an insert that
+  shifted the frame without carrying a stop was reported as `frameshift` with no PTC,
+  and a truncation got no PTC search at all. Both now assemble the retained downstream
+  exons and continue the in-frame scan (`downstream_sequence`), so the 50-nucleotide
+  rule can be applied where the stop actually is.
+- New class `exon_truncation` for a splice-site shift that shortens an exon without
+  producing a stop.
+
+### Changed
+- Against experimentally measured NMD sensitivity the class ordering is now monotonic
+  and the effect is stronger. On cassette exons (i3Neuron, quantitative label) the
+  ambiguous `frameshift` bucket disappears and classes rank
+  `ptc_nmd` 12.7 > `ptc_escape` 8.6 > in-frame 6.3 > UTR 4.2 > non-coding −1.6 ΔPSI.
+  On splice-site shifts (SMG1i, binary label) `ptc_nmd` is 48.5% NMD-sensitive against
+  23.5% for events where no stop is possible — **odds ratio 2.31 → 3.07,
+  p 1e-04 → 2.3e-12**.
+
+## [0.7.0] — 2026-08-30
+
+### Changed
+- **The differential test now models read counts** (`betabinom`), replacing the
+  Mann–Whitney U test on per-sample Ψ as the default wherever counts are available.
+  A rank test on `n` replicates per group cannot return a p-value below `2/C(2n,n)`
+  — 0.1 at 3-vs-3 — so nothing could ever survive genome-wide BH correction. On a real
+  human TDP-43 knockdown (GSE245332, 3 vs 3) the old test returned **0 significant
+  junctions with min(q) = 1.0**, while rMATS called 3 724 events on the same BAMs, and
+  46 junctions had |ΔΨ| ≥ 0.5. The signal was there; the statistic could not reach it.
+- `differential_splicing` gained `test` (`"auto"`, `"betabinom"`, `"ranksum"`) plus
+  `inc_col`/`total_col`. `"auto"` picks the count-based test when counts are present and
+  falls back to the rank test otherwise, so existing calls keep working.
+- `compute_psi` now also returns `donor_total` and `acceptor_total`, the denominators Ψ
+  was formed from, so junction-level tests can use counts too.
+
+### Added
+- `betabinom`: vectorised beta-binomial fitting (`fit_mu`, `loglik`), a df-corrected
+  moment estimator for the shared dispersion (`estimate_precision`) and the
+  likelihood-ratio test (`lrt`). Fits are bisections on a monotone score, so hundreds of
+  thousands of events cost seconds.
+- `min_achievable_rank_pvalue` so the limitation above can be shown rather than asserted.
+- 11 tests: Ψ recovery, boundary events, dispersion bias, null calibration
+  (nominal 0.05 → 0.045–0.053) and power past the rank-test floor.
+
+### Fixed
+- `detect_mxe_events` compared every junction against every other one on a chromosome to
+  find candidate exons, which is quadratic and dominated the whole pipeline (81% of
+  runtime on a real dataset). A candidate exon is at most `max_exon` long, so only
+  downstream junctions starting inside that window can pair with a given upstream
+  junction; sorting by start and binary-searching the window is exact and much cheaper.
+  **89.5 s → 0.5 s** on two chromosomes, with identical output. Together with the
+  consequence fix below this takes a full six-sample run from ~45 minutes to **~1.5
+  minutes**; only the row order of `events.tsv` changes.
+- `annotate_consequences` scanned every transcript for every event, which is quadratic:
+  296,034 cassette exons took ~34 minutes. Transcripts are now indexed by gene
+  (`index_by_gene`) and only the event's own gene is searched — the same run takes
+  **19 seconds**, and events can no longer be attributed to an overlapping neighbour.
+
+### Documentation
+- `validation/` records an end-to-end run on real data (GSE245332) plus a replication
+  experiment against a second, independent dataset (GSE122069): `bam2sj.awk` and
+  `extract_sj.sh` derive STAR-format junctions from any sorted BAM, and `add_motifs.py`
+  fills in intron motifs from an indexed genome (85–90% canonical, and the motif agrees
+  with the aligner's `XS:A` tag for 99.94% of junctions).
+- The classifier's positioning in the README and METHODS is corrected. Scored against
+  replication in the independent dataset it reaches an average precision of 0.006 for
+  confidently replicating junctions where the beta-binomial statistic reaches 0.062, and
+  the combination is worse than the statistic alone. Its features describe whether a
+  junction is plausible, not whether it changes between conditions; it is a noise filter,
+  not the way to find cryptic events.
+
+### Notes
+- Dispersion is estimated about each group's own mean. Pooling groups that genuinely
+  differ charges the difference to dispersion — at ΔΨ = 0.35 the pooled estimate collapses
+  from `s ≈ 200` to `s ≈ 5` and power goes to zero.
+
+## [0.6.0] — 2026-08-30
+
+### Added
+- **Protein-consequence prediction** (`consequence`): for each cassette exon, inherit the
+  reading frame from the coding sequence upstream of the host intron, translate the
+  insert, locate the first in-frame premature termination codon (PTC) and apply the
+  50-nucleotide rule to decide whether it triggers nonsense-mediated decay. Events are
+  classified as `ptc_nmd`, `ptc_escape`, `frameshift`, `in_frame_insertion`,
+  `utr_insertion`, `non_coding_host` or `no_host_transcript`. Detecting a cryptic exon
+  says nothing about whether it matters; this is what closes that gap.
+- `GenomeFasta`: random access to an indexed genome through its `.fai` alone, so
+  sequence resolution adds no compiled dependency.
+- `load_transcripts`: exon/CDS models from a plain or gzipped GTF, optionally restricted
+  to a set of gene names or Ensembl IDs (versioned or not).
+- CLI `consequence --events --gtf --genome --out` for candidates produced elsewhere
+  (e.g. an existing rMATS run), and `run --genome` to fold the same prediction into the
+  end-to-end pipeline as `consequence.tsv`.
+- 11 tests covering frame inheritance, PTC detection, the NMD distance rule, strand
+  handling and the FASTA index reader.
+
+### Notes
+- Use the **full** GENCODE annotation rather than `basic`: on 300 real cryptic exons the
+  reduced set left 43% of events without a host transcript, against 20% with the full
+  annotation.
+
 ## [0.5.0] — 2026-08-30
 
 ### Added

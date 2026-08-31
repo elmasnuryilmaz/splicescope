@@ -51,16 +51,63 @@ event model, which is what makes it robust to incomplete annotation.
 
 ## 5. Differential splicing
 
-For two conditions A and B and each junction, we compare the per-sample Ψ vectors:
+For two conditions A and B and each junction or event we test the **read counts** Ψ was
+formed from, not Ψ itself.
 
-- **Effect size:** `ΔΨ = mean(Ψ | B) − mean(Ψ | A)`.
-- **Test:** two-sided **Mann–Whitney U** on the per-sample Ψ values. Ψ is a bounded
-  ratio and replicate counts are small, so a rank test is preferred over a *t*-test.
-- **Multiple testing:** **Benjamini–Hochberg** FDR across all tested junctions, with the
+### 5.1 Why not a rank test
+
+A two-sided Mann–Whitney U on `n` replicates per group cannot return a p-value below
+
+```
+p_min = 2 / C(2n, n)
+```
+
+which is `0.1` for the 3-vs-3 designs that dominate RNA-seq (`0.029` at 4-vs-4, `1.1e-5`
+even at 10-vs-10). Surviving Benjamini–Hochberg across ~1.4 × 10⁵ junctions needs the top
+hit at `p ≤ 3.6e-7`, so a rank test reports **nothing significant at any realistic
+replicate count**, however large the effect. On a real TDP-43 knockdown (3 vs 3) this
+produced 0 hits with `min(q) = 1.0`, while rMATS called 3 724 events on the same BAMs.
+Modelling counts removes the floor: evidence grows with coverage, not only with replicates.
+
+### 5.2 Beta-binomial likelihood-ratio test
+
+Inclusion reads `k` out of `n` informative reads are beta-binomial with mean Ψ and
+precision `s = α + β`, so `α = Ψs` and `β = (1 − Ψ)s`. The beta layer absorbs the
+replicate-to-replicate variability a plain binomial would mistake for signal. Per unit we
+fit Ψ by maximum likelihood under
+
+- **H₀** — one Ψ shared by every sample, and
+- **H₁** — a separate Ψ per group,
+
+and refer `G = 2(ℓ₁ − ℓ₀)` to a χ² with one degree of freedom. Ψ is fitted by bisection on
+the score function, which is monotone in Ψ, so the whole step vectorises over events.
+
+### 5.3 Dispersion
+
+`s` is shared across events and estimated once from **df-corrected Pearson residuals**:
+under the model `E[r²] = 1 + (n − 1)/(s + 1)`, so one pass over the residual sum
+determines `s`. Two choices matter:
+
+- **Not profile likelihood.** Fitting one Ψ per event on a handful of replicates absorbs
+  part of the variance being measured, biasing `s` upward (200 → 631 in simulation) and
+  making the test anti-conservative. The moment estimator corrects for the fitted means
+  through the residual degrees of freedom and is essentially unbiased (200 → 202).
+- **Residuals about each group's own mean.** Pooling groups that genuinely differ charges
+  that difference to dispersion: at ΔΨ = 0.35 the pooled estimate collapses from `s ≈ 200`
+  to `s ≈ 5` and power drops to zero. `estimate_precision` therefore takes the same group
+  masks the test will use.
+
+Simulation gives well-calibrated null p-values (nominal 0.05 → observed 0.045–0.053 across
+dispersion levels) and, at 3-vs-3 with ~60× coverage, 94 % of ΔΨ = 0.2 events clearing
+BH `q ≤ 0.05`.
+
+- **Effect size:** `ΔΨ = Ψ̂(B) − Ψ̂(A)`, the fitted group means.
+- **Multiple testing:** **Benjamini–Hochberg** FDR across all tested units, with the
   standard monotonicity enforcement.
 
-Junctions with fewer than `min_samples` informative replicates per group are skipped.
-"Significant" defaults to `q ≤ 0.05` and `|ΔΨ| ≥ 0.1`.
+Units with fewer than `min_samples` informative replicates per group are skipped.
+"Significant" defaults to `q ≤ 0.05` and `|ΔΨ| ≥ 0.1`. The rank test remains available as
+`test="ranksum"` for Ψ tables that carry no counts.
 
 ## 5b. Event-level PSI (cassette exons)
 
@@ -127,6 +174,19 @@ hyper-parameters, the evaluation protocol, metrics, importances, intended use an
 limitations. Scaling is fit inside each CV fold via the pipeline, so there is no
 train/test leakage.
 
+### 7c. What the classifier is and is not for
+
+Its features (`intron_length`, `log_max_count`, `n_samples_support`, `mean_psi_donor`,
+`canonical_motif`, distance to the nearest known donor/acceptor, `is_novel_both`) describe
+a junction in isolation; none of them sees the experimental groups. It therefore scores
+*plausibility*, not differential usage.
+
+Measured against replication in an independent experiment (GSE122069), it reaches an
+average precision of 0.006 for confidently replicating junctions where the beta-binomial
+statistic reaches 0.062 — an order of magnitude worse — and combining the two is worse
+than the statistic alone. Under a permissive definition of replication the ordering
+reverses. Use it to filter noise before testing, not to rank cryptic candidates.
+
 ## 7b. Pathway over-representation (ORA)
 
 To ask *which pathways are affected*, `enrich` runs the standard one-sided
@@ -156,6 +216,33 @@ genome and per-sample junctions:
    separable.
 
 Generation is fully seeded and therefore reproducible.
+
+## 8b. Protein consequence
+
+For a cassette exon the reading frame is inherited from the coding sequence upstream of
+the host intron, the insert is translated in that frame, the first in-frame stop is
+located and the **50-nucleotide rule** decides whether it triggers NMD: a PTC more than
+50 nt upstream of the last exon–exon junction is predicted to be degraded. Where several
+transcripts host the event, the most disruptive prediction is reported.
+
+Two shapes of event are handled. A **cassette** cryptic exon is supplied as an exon
+interval. A **splice-site shift** — a novel donor or acceptor paired with an annotated
+site on the other side — is supplied as a junction, and the annotation determines what
+it adds to (extension) or removes from (truncation) the neighbouring exon. Shifts are the
+majority of cryptic events reported by junction-level callers, so a layer restricted to
+cassettes would miss most of them.
+
+When the event shifts the frame without carrying a stop itself, the retained downstream
+exons are assembled and the in-frame scan continues there, because that is where the
+first premature stop then lies. The same applies to truncations, which cannot contain a
+stop inside the removed interval by construction.
+
+**This is interpretation, not evidence of reality.** A random 128 nt interval read in a
+fixed frame contains a stop codon with probability `1 − (61/64)^42 ≈ 0.87`, so most
+intronic sequence looks disruptive whether or not the event is real. On GSE245332 the
+protein-disrupting fraction among significant events (61.6%) was no higher than
+background (66.9%). Apply the consequence layer to events that already passed the
+differential test.
 
 ## 9. Limitations
 

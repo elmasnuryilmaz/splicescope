@@ -32,7 +32,7 @@ def panel_a(ax, d: pd.DataFrame) -> None:
         ("splicescope\nother", d[~d.consequence_class.eq("ptc_nmd")].nmd_gain, SPLICESCOPE),
         ("LeafCutter2\nunproductive", d[d.lc2.eq("UP")].nmd_gain, LEAFCUTTER2),
         ("LeafCutter2\nproductive", d[d.lc2.eq("PR")].nmd_gain, LEAFCUTTER2),
-        ("LeafCutter2\nundecided", d[d.lc2.eq("NE")].nmd_gain, UNDECIDED),
+        ("LeafCutter2\nnovel exon", d[d.lc2.eq("NE")].nmd_gain, UNDECIDED),
     ]
     data = [g[1].to_numpy() for g in groups]
     bp = ax.boxplot(data, vert=False, widths=0.6, patch_artist=True, showfliers=False)
@@ -51,7 +51,7 @@ def panel_a(ax, d: pd.DataFrame) -> None:
     ax.set_yticks(range(1, len(groups) + 1))
     ax.set_yticklabels([f"{g[0]}\n(n={len(g[1])})" for g in groups], fontsize=7.5)
     ax.set_xlabel("measured ΔPSI when NMD is blocked")
-    ax.set_title("A  Both methods separate the ground truth", loc="left", fontsize=11)
+    ax.set_title("A  Measured NMD sensitivity by call", loc="left", fontsize=11)
 
 
 def panel_b(ax, d: pd.DataFrame) -> None:
@@ -83,7 +83,7 @@ def panel_b(ax, d: pd.DataFrame) -> None:
     ax.set_ylim(-0.6, 1.6)
     ax.set_xlim(0.45, 0.85)
     ax.set_xlabel("AUROC against measured NMD sensitivity (95% CI)")
-    ax.set_title("B  Comparable, and both modest", loc="left", fontsize=11)
+    ax.set_title("B  Indistinguishable, and both modest", loc="left", fontsize=11)
 
 
 def main() -> None:
@@ -92,6 +92,7 @@ def main() -> None:
     p.add_argument("--out", required=True, type=Path)
     args = p.parse_args()
     d = pd.read_csv(args.table, sep="\t").dropna(subset=["nmd_gain", "lc2"])
+    d = d[d.lc2 != "undecided"]
 
     fig, axes = plt.subplots(1, 2, figsize=(10.5, 4.0))
     panel_a(axes[0], d)

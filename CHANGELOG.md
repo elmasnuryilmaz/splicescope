@@ -29,7 +29,7 @@ All notable changes to this project are documented here. The format is based on
   `ptc_nmd` 12.7 > `ptc_escape` 8.6 > in-frame 6.3 > UTR 4.2 > non-coding −1.6 ΔPSI.
   On splice-site shifts (SMG1i, binary label) `ptc_nmd` is 48.5% NMD-sensitive against
   23.5% for events where no stop is possible — **odds ratio 2.31 → 3.07,
-  p 1e-04 → 2.3e-12**.
+  two-sided Fisher p 1e-04 → 4.5e-12**.
 
 ## [0.7.0] — 2026-08-30
 

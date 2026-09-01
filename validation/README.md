@@ -159,22 +159,29 @@ different cell models, different ways of blocking decay.
 | `in_frame_insertion` | 31 | 6.25 |
 | `utr_insertion` | 31 | 4.17 |
 | `non_coding_host` | 6 | **−1.57** |
+| `no_host_transcript` | 4 | 5.79 |
 
-Mann-Whitney one-sided p = 3.8e-06, AUROC 0.675 (95% CI 0.596–0.746, 2000 bootstraps).
+The last class is not a prediction but its absence: four exons lie where no annotated
+intron can interpret them, and they are excluded from the contrast below.
+
+Mann-Whitney two-sided p = 7.5e-06, AUROC 0.675 (95% CI 0.601–0.752, 2000 bootstraps,
+seed 0). The AUROC is computed with the measured ΔPSI as the score and the predicted
+class as the label, so it equals U/(n₁n₂) from the same test.
 The last row is the internal control: a transcript with no coding sequence cannot carry a
 premature stop, and shows no gain.
 
 **Splice-site shifts** — iNeurons and iMNs, SMG1 inhibitor
 (doi:10.1101/2025.07.09.664014, 3,419 interpretable junctions, binary label):
 `ptc_nmd` is 48.5% NMD-sensitive against 23.5% where no stop is possible,
-odds ratio 3.07, Fisher p = 2.3e-12.
+odds ratio 3.07, Fisher two-sided p = 4.5e-12.
 
 Robustness on the first dataset: the result holds under all six ways of defining the
-label (each NMD knockdown alone, their mean, their maximum; AUROC 0.65–0.68, every one
+label (each NMD knockdown alone, their mean, their maximum; AUROC 0.64–0.68, every one
 significant), and is unchanged when restricted to one exon per gene (AUROC 0.687).
 
-**What this does and does not support.** Sensitivity is high (0.85–0.88) and specificity
-low (0.26–0.46): most events are called `ptc_nmd`, because a random intronic interval
+**What this does and does not support.** Sensitivity is high (0.84–0.90) and specificity
+low (0.21–0.53, falling as the threshold rises): most events are called `ptc_nmd`,
+because a random intronic interval
 read in a fixed frame contains a stop with probability ≈0.87. Use the call to interpret
 and prioritise events, not to filter them. The negative set in the second dataset is also
 imperfect — it is defined as "not in the NMD-sensitive table", which was itself filtered
@@ -190,3 +197,19 @@ distance from each junction to the nearest annotated intron, which is systematic
 
 Raw data are public (SRA). Everything after alignment is in this repository; the
 reference GTF and genome are the standard GENCODE and GRCh38 primary assembly files.
+
+### Every number in the manuscript
+
+`manuscript_tables/` holds the three per-event tables the manuscript is built on —
+the consequence calls for the cassette exons and for the splice-site shifts, and the
+LeafCutter2 labels from the full-transcriptome run. One script turns them back into
+every quantity that appears in the text, in section order:
+
+```bash
+python validation/manuscript_numbers.py
+```
+
+Bootstraps use `numpy.random.default_rng(0)` with 2000 resamples, so the confidence
+intervals it prints are exactly the ones reported. Figures are regenerated with
+`figure_nmd_prediction.py` (Figure 1), `figure_method_comparison.py` (Figure 2) and
+`figure_rank_test_floor.py` (Supplementary Figure S1).

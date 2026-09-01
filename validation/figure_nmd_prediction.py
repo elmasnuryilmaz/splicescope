@@ -110,11 +110,11 @@ def main() -> None:
     a = d.loc[d.consequence_class == "ptc_nmd", "nmd_gain"]
     b = d.loc[d.consequence_class.isin(["in_frame_insertion", "utr_insertion", "non_coding_host"]),
               "nmd_gain"]
-    _, pval = stats.mannwhitneyu(a, b, alternative="greater")
+    _, pval = stats.mannwhitneyu(a, b, alternative="two-sided")
     print(f"wrote {args.out}")
     print(f"  ptc_nmd n={len(a)} median={a.median():.2f}")
     print(f"  no-PTC  n={len(b)} median={b.median():.2f}")
-    print(f"  Mann-Whitney one-sided p = {pval:.3g}")
+    print(f"  Mann-Whitney two-sided p = {pval:.3g}")
 
 
 if __name__ == "__main__":

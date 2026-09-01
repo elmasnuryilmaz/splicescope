@@ -180,7 +180,7 @@ label (each NMD knockdown alone, their mean, their maximum; AUROC 0.64–0.68, e
 significant), and is unchanged when restricted to one exon per gene (AUROC 0.687).
 
 **What this does and does not support.** Sensitivity is high (0.84–0.90) and specificity
-low (0.21–0.53, falling as the threshold rises): most events are called `ptc_nmd`,
+low (0.21–0.53, falling steadily as the threshold rises): most events are called `ptc_nmd`,
 because a random intronic interval
 read in a fixed frame contains a stop with probability ≈0.87. Use the call to interpret
 and prioritise events, not to filter them. The negative set in the second dataset is also

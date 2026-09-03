@@ -1,3 +1,9 @@
-# Deployment (e.g. Streamlit Community Cloud) — installs the package with the
-# Streamlit dashboard extra. For development use `pip install -e ".[dev]"` instead.
-.[app]
+# Deployment (Streamlit Community Cloud). The app adds ../src to sys.path, so the
+# package itself does not need to be pip-installed here — only its runtime deps.
+# For local development use `pip install -e ".[dev]"` instead.
+streamlit>=1.28
+numpy>=1.24
+pandas>=1.5,<3
+scipy>=1.9
+matplotlib>=3.6
+scikit-learn>=1.2

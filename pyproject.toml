@@ -13,9 +13,14 @@ authors = [{ name = "Elmasnur Yılmaz", email = "elmasnrylmz@gmail.com" }]
 keywords = ["bioinformatics", "RNA-seq", "alternative-splicing", "cryptic-exons", "transcriptomics"]
 classifiers = [
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "License :: OSI Approved :: MIT License",
   "Intended Audience :: Science/Research",
   "Topic :: Scientific/Engineering :: Bio-Informatics",
+  "Operating System :: OS Independent",
 ]
 dependencies = [
   "numpy>=1.23",
@@ -35,6 +40,10 @@ splicescope = "splicescope.cli:main"
 [project.urls]
 Homepage = "https://elmasnuryilmaz.github.io"
 Repository = "https://github.com/elmasnuryilmaz/splicescope"
+Issues = "https://github.com/elmasnuryilmaz/splicescope/issues"
+Changelog = "https://github.com/elmasnuryilmaz/splicescope/blob/main/CHANGELOG.md"
+Documentation = "https://github.com/elmasnuryilmaz/splicescope/blob/main/docs/METHODS.md"
+Archive = "https://doi.org/10.5281/zenodo.22287002"
 
 [tool.setuptools.packages.find]
 where = ["src"]

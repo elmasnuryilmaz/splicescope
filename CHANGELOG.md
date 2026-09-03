@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/) and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- Test coverage for the plotting module: threshold behaviour of both volcano
+  plots, fixed event-type ordering with zero-fill, top-N truncation in the
+  enrichment plot, and that `savefig` creates missing parent directories.
+- `CODE_OF_CONDUCT.md`, issue templates (bug report, feature request) and a pull
+  request template that requires stating the effect on published numbers.
+- Python 3.13 to the CI matrix, and the corresponding trove classifiers.
+- `Issues`, `Changelog`, `Documentation` and `Archive` (Zenodo DOI) entries under
+  `[project.urls]`.
+- Zenodo DOI badge, and the DOI in `CITATION.cff` (concept and version).
+
 ## [0.8.1] — 2026-09-03
 
 ### Fixed

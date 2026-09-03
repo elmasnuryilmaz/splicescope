@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Method and statistics questions
+    url: https://github.com/elmasnuryilmaz/splicescope/blob/main/docs/METHODS.md
+    about: How Psi, the count-based test, consequence prediction and the classifier are defined.
+  - name: How the published results were produced
+    url: https://github.com/elmasnuryilmaz/splicescope/blob/main/validation/README.md
+    about: The real-data validation suite and what each script reproduces.

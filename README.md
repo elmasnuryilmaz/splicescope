@@ -2,6 +2,7 @@
 
 **Detect, quantify and characterize alternative & cryptic splicing events from splice junctions — with an honest, reproducible ML layer on top.**
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22287002.svg)](https://doi.org/10.5281/zenodo.22287002)
 [![CI](https://github.com/elmasnuryilmaz/splicescope/actions/workflows/ci.yml/badge.svg)](https://github.com/elmasnuryilmaz/splicescope/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
@@ -210,7 +211,11 @@ exons, etc.) is a natural extension.
 If this project is useful, please cite it (see [`CITATION.cff`](CITATION.cff)):
 
 > Yılmaz, E. (2026). *splicescope: detecting and characterizing cryptic splicing from
-> splice junctions* (v0.1.0). https://github.com/elmasnuryilmaz/splicescope
+> splice junctions* (v0.8.1). Zenodo. https://doi.org/10.5281/zenodo.22287002
+
+The DOI above is the **concept DOI**: it always resolves to the most recent release, so
+it stays correct as the software evolves. To cite this exact version instead, use
+[10.5281/zenodo.22287003](https://doi.org/10.5281/zenodo.22287003).
 
 ## License
 

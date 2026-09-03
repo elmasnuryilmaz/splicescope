@@ -14,6 +14,14 @@ authors:
     given-names: "Elmasnur"
     orcid: "https://orcid.org/0000-0001-9711-0203"
     email: "elmasnrylmz@gmail.com"
+doi: "10.5281/zenodo.22287002"
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.22287002"
+    description: "Concept DOI — always resolves to the latest release"
+  - type: doi
+    value: "10.5281/zenodo.22287003"
+    description: "DOI for version v0.8.1"
 version: "0.8.1"
 date-released: "2026-09-03"
 license: MIT

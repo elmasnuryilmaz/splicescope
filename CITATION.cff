@@ -14,8 +14,8 @@ authors:
     given-names: "Elmasnur"
     orcid: "https://orcid.org/0000-0001-9711-0203"
     email: "elmasnrylmz@gmail.com"
-version: "0.8.0"
-date-released: "2026-08-30"
+version: "0.8.1"
+date-released: "2026-09-03"
 license: MIT
 repository-code: "https://github.com/elmasnuryilmaz/splicescope"
 url: "https://elmasnuryilmaz.github.io"

@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/) and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.8.1] — 2026-09-03
 
 ### Fixed
 - Streamlit dashboard deployment: the app now imports from `src`, declares its runtime

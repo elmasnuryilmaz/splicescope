@@ -208,7 +208,7 @@ exons, etc.) is a natural extension.
 
 ## Cite
 
-If this project is useful, please cite it (see [`CITATION.cff`](CITATION.cff)):
+If you use `splicescope` in your research, please cite it (see [`CITATION.cff`](CITATION.cff)):
 
 > Yılmaz, E. (2026). *splicescope: detecting and characterizing cryptic splicing from
 > splice junctions* (v0.8.1). Zenodo. https://doi.org/10.5281/zenodo.22287002

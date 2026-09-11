@@ -49,6 +49,21 @@ i.e. the fraction of that donor's spliced reads that flow through *j*. Acceptor 
 is `< min_reads` (default 10) in a sample, Ψ is set to `NaN` (uninformative). Ψ needs no
 event model, which is what makes it robust to incomplete annotation.
 
+**Zero is a measurement, absence is not.** Aligners emit only junctions carrying at least
+one read, so a junction missing from a sample looks like missing data. It is not: if the
+donor has coverage in that sample, `count(j) = 0` and `Ψ_D(j) = 0` exactly. This is the
+single most informative observation for cryptic splicing — an event absent from every
+control and present in every knockdown — and treating it as missing removes precisely the
+events worth finding. `compute_psi` therefore completes the junction × sample grid,
+adding an explicit zero wherever the junction's donor *or* acceptor site has reads in that
+sample. Where the site has no reads at all, nothing is added: the denominator is unknown
+and the observation genuinely was not made.
+
+Because those NaNs are the channel through which `min_reads` reaches the differential
+test, they must survive the reshaping into a unit × sample matrix. Pandas aggregates an
+all-NaN group to `0.0` under `sum`, which would silently reclassify "uninformative" as
+"zero usage"; Ψ is therefore pivoted with `mean` and only the counts are summed.
+
 ## 5. Differential splicing
 
 For two conditions A and B and each junction or event we test the **read counts** Ψ was

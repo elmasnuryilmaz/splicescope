@@ -63,8 +63,16 @@ def _resolve_count_columns(
     return None
 
 
-def _wide(df: pd.DataFrame, key: list[str], column: str, samples: list[str]) -> np.ndarray:
-    table = df.pivot_table(index=key, columns="sample", values=column, aggfunc="sum")
+def _wide(
+    df: pd.DataFrame, key: list[str], column: str, samples: list[str], aggfunc: str = "sum"
+) -> pd.DataFrame:
+    """Pivot one column to a unit × sample matrix.
+
+    ``aggfunc`` matters more than it looks: pandas sums an all-NaN group to ``0.0``,
+    so summing Ψ turns "uninformative" into "zero usage" and erases the ``min_reads``
+    coverage filter entirely. Counts are summed; Ψ is averaged, which leaves NaN as NaN.
+    """
+    table = df.pivot_table(index=key, columns="sample", values=column, aggfunc=aggfunc)
     return table.reindex(columns=samples)
 
 
@@ -91,12 +99,15 @@ def _betabinom_test(
 ) -> pd.DataFrame:
     inc_col, total_col = counts
     samples = sorted(df["sample"].unique())
-    psi_wide = _wide(df, key, value, samples)
-    index = psi_wide.index
+    # The summed count pivot keeps every unit, so use its index as the canonical one
+    # and align the others to it; the averaged Ψ pivot can drop an all-NaN unit.
+    n_wide = _wide(df, key, total_col, samples)
+    index = n_wide.index
+    psi_wide = _wide(df, key, value, samples, aggfunc="mean").reindex(index)
 
     valid = np.array(psi_wide.notna().to_numpy(), dtype=bool)  # writable copy
-    k = np.nan_to_num(_wide(df, key, inc_col, samples).to_numpy(), nan=0.0)
-    n = np.nan_to_num(_wide(df, key, total_col, samples).to_numpy(), nan=0.0)
+    k = np.nan_to_num(_wide(df, key, inc_col, samples).reindex(index).to_numpy(), nan=0.0)
+    n = np.nan_to_num(n_wide.to_numpy(), nan=0.0)
     valid &= n > 0
 
     is_a = np.array([groups.get(s) == a_name for s in samples])

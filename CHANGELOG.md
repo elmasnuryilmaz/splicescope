@@ -31,6 +31,41 @@ All notable changes to this project are documented here. The format is based on
   frames occur, and that cassette junctions are not double-reported as shifts.
 - CI smoke-tests the consequence path end to end.
 
+### Fixed
+- **The `min_reads` coverage filter was inert for the beta-binomial test** — the default
+  test, on every run since 0.7.0. `_wide` pivoted Ψ with `aggfunc="sum"`, and pandas sums
+  an all-NaN group to `0.0`, so `psi_wide.notna()` was true for every cell that had a row
+  at all and the NaN masking `compute_psi` performs was discarded. `--min-reads` changed
+  nothing: on `simulate_dataset(n_genes=20, n_per_group=4, seed=3)` the test returned the
+  same 105 units and 18 significant hits at `min_reads=10` and at `min_reads=100000`,
+  where every Ψ is NaN. Consequences were not cosmetic — the BH denominator was inflated
+  by every sub-threshold unit, so **every q-value was wrong**, and `estimate_precision`
+  was fitting dispersion to 1–2 read residuals. Ψ is now pivoted with `mean`; counts are
+  still summed. The rank-sum path was never affected because it uses `dropna`, which is
+  why `validation/README.md` records 138,643 rank tests against 189,700 count tests on
+  identical input: the 51,057 difference *was* the bug.
+- **A junction absent from a sample is a measured zero, not missing data.** Aligners list
+  only junctions with at least one read, so `compute_psi` never produced a row for a
+  junction in a sample where it had none, the pivot left NaN, and the unit was dropped for
+  want of informative replicates. The events layer already defaulted a missing count to
+  zero, so the two halves of the tool disagreed about the same data. The casualties were
+  exactly the cleanest cryptic events: a junction with 0 reads in all three controls and
+  100 in all three knockdowns was **absent from `differential_splicing.tsv` entirely**,
+  while leakier events were reported. `compute_psi` now completes the junction × sample
+  grid (`add_unobserved_zeros`), adding a zero only where that junction's donor or
+  acceptor site has coverage in the sample, so a site nobody sequenced stays unobserved.
+  `fill_unobserved=False` restores the old behaviour.
+- 8 regression tests; 5 of them fail against the previous code.
+
+### Changed
+- Every junction- and event-level p-value and q-value moves as a result of the two fixes
+  above, in both directions: sub-threshold units leave the BH family, and junctions absent
+  from a group enter it. The real-data numbers in `validation/README.md` were measured
+  with 0.8.1 and are marked as awaiting a re-run; the qualitative conclusions there do not
+  depend on the exact values. On simulated data the cryptic classifier moves from
+  ROC-AUC 0.785 to 0.795 (AP 0.702 → 0.700), because `mean_psi_donor` now averages over
+  the samples where a junction was measured absent as well.
+
 ### Added (previously)
 - Test coverage for the plotting module: threshold behaviour of both volcano
   plots, fixed event-type ordering with zero-fill, top-N truncation in the

@@ -44,6 +44,19 @@ the outputs are unchanged apart from row order.
 
 ## What it showed
 
+> **Measured with 0.8.1; not yet re-measured under 0.9.0.** Two defects in the
+> differential path were fixed after this run (see the CHANGELOG): the `min_reads`
+> coverage filter was inert for the beta-binomial test, and junctions an aligner omits
+> for want of reads were treated as missing data rather than as measured zeros. Both
+> change *which units are tested*, so every count, p-value and q-value in this section
+> will move when it is re-run. The 189,700 immediately below is itself the evidence for
+> the first defect: it is 51,057 larger than the 138,643 the rank test saw on the same
+> input, and that gap is exactly the sub-threshold units the filter should have removed.
+> The qualitative conclusions do not rest on the exact values — a rank test cannot clear
+> BH at 3 vs 3, the count model can, and the classifier ranks confidently replicating
+> events worse than the statistic does. The NMD-sensitivity sections use external labels
+> and the unchanged consequence layer, and are unaffected.
+
 ### The rank test could not work
 
 | | junction tests | smallest p | smallest q | significant |

@@ -101,6 +101,16 @@ All notable changes to this project are documented here. The format is based on
   CHANGELOG agree — they had drifted to 0.5.0, 0.8.1 and 0.8.1 respectively, so
   `splicescope --version` reported a release three versions old.
 
+### Fixed (Nextflow)
+- **The pipeline's real-data mode could not have worked.** One channel was passed for all
+  three inputs, and the process script then looked for `<sj_dir>/sj`,
+  `<sj_dir>/annotation.gtf` and `<sj_dir>/groups.tsv` — a layout no real dataset has. The
+  three inputs are now staged independently, `--genome` is exposed (with its `.fai` staged
+  alongside), `--min-reads` is passed through, and demo mode runs the consequence layer
+  too now that `simulate` writes a genome. *Not executed locally: Nextflow is not
+  installed on the development machine. The CLI invocation the process builds was
+  verified against a replica of Nextflow's staging layout.*
+
 ### Fixed (enrichment)
 - **Pathway ORA could never test a single gene set against a real annotation.**
   `over_representation` intersected identifiers verbatim, but a GTF gives versioned

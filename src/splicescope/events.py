@@ -209,7 +209,10 @@ def detect_mxe_events(
             if len(plist) < 2:
                 continue
             plist.sort(key=lambda p: (p[0], p[1]))
-            emitted = False
+            # Every non-overlapping pair is an MXE candidate. Stopping at the first one
+            # would not merely under-report tandem clusters: the survivor would be the
+            # genomically leftmost pair rather than the best-supported one, so a noise
+            # junction sitting to the left could displace the real event.
             for i in range(len(plist)):
                 for k in range(i + 1, len(plist)):
                     a, b = plist[i], plist[k]
@@ -242,10 +245,6 @@ def detect_mxe_events(
                                 "b_j2_end": b[3].end,
                             }
                         )
-                        emitted = True
-                        break
-                if emitted:
-                    break
     return pd.DataFrame(events)
 
 
@@ -297,11 +296,18 @@ def detect_alt_ss_events(
     return pd.DataFrame(events)
 
 
-def detect_events(annotated: pd.DataFrame, types: tuple[str, ...] = EVENT_TYPES) -> pd.DataFrame:
+def detect_events(
+    annotated: pd.DataFrame,
+    types: tuple[str, ...] = EVENT_TYPES,
+    max_exon: int = 1000,
+) -> pd.DataFrame:
     """Detect all requested event types and return them in one typed table.
 
     Cassette (SE) events are detected first; the junctions they use are then
     excluded from A5SS/A3SS detection so the same signal is not double-reported.
+
+    ``max_exon`` bounds how long a candidate MXE exon may be; raise it for loci with
+    unusually long mutually exclusive exons.
     """
     parts = []
     used: set = set()
@@ -313,7 +319,7 @@ def detect_events(annotated: pd.DataFrame, types: tuple[str, ...] = EVENT_TYPES)
             used.add((e.chrom, e.inc2_start, e.inc2_end, e.strand))
             used.add((e.chrom, e.skip_start, e.skip_end, e.strand))
     if "MXE" in types:
-        mxe = detect_mxe_events(annotated, exclude=used)
+        mxe = detect_mxe_events(annotated, max_exon=max_exon, exclude=used)
         parts.append(mxe)
         for e in mxe.itertuples(index=False):
             for js, je in (

@@ -79,7 +79,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
     # event-level: cassette (SE), A5SS and A3SS events with rMATS-style PSI
     from . import events as _events
 
-    evs = _events.detect_events(annotated)
+    evs = _events.detect_events(annotated, max_exon=args.max_exon)
     if not evs.empty:
         evs.to_csv(outdir / "events.tsv", sep="\t", index=False)
         epsi = _events.event_psi(annotated, evs, min_reads=args.min_reads)
@@ -319,6 +319,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="indexed genome FASTA (.fai required); enables protein-consequence prediction",
     )
     r.add_argument("--min-reads", type=int, default=10)
+    r.add_argument(
+        "--max-exon",
+        type=int,
+        default=1000,
+        help="longest candidate exon considered for mutually-exclusive-exon events",
+    )
     r.add_argument("--seed", type=int, default=0)
     r.set_defaults(func=_cmd_run)
 

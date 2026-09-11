@@ -32,6 +32,22 @@ All notable changes to this project are documented here. The format is based on
 - CI smoke-tests the consequence path end to end.
 
 ### Fixed
+- **`detect_mxe_events` emitted one event per anchor pair and abandoned the rest.** Inside
+  each shared (donor, acceptor) context the first non-overlapping exon pair set a flag and
+  broke out of both loops, so a locus with three or more mutually exclusive exons — the
+  interesting case — reported one pair and lost the others. The `seen` set already handled
+  deduplication, so the breaks bought nothing. The loss was total rather than partial: the
+  discarded exons' junctions share the emitted pair's donor and acceptor, so once
+  `detect_events` marked those as used, each site had a single remaining alternative and
+  A5SS/A3SS detection rejected them too. The exons disappeared from `events.tsv` with no
+  warning. Worse than under-reporting, the survivor was the genomically *leftmost* pair
+  rather than the best-supported one, so noise junctions displaced real events: on
+  `simulate_dataset(n_genes=200, mxe_fraction=1.0)`, **31–44 of 200 emitted MXE rows
+  carried wrong exon coordinates** while the injected pair sat unused in the same group
+  (seeds 4, 6, 11). Every pair is now enumerated; all 200 injected events are recovered at
+  every seed, and detection still takes 0.02 s.
+- `max_exon` is reachable through `detect_events` and as `run --max-exon`; the 1 kb
+  candidate-exon window was hard-coded for anyone using the documented entry points.
 - **The `min_reads` coverage filter was inert for the beta-binomial test** — the default
   test, on every run since 0.7.0. `_wide` pivoted Ψ with `aggfunc="sum"`, and pandas sums
   an all-NaN group to `0.0`, so `psi_wide.notna()` was true for every cell that had a row

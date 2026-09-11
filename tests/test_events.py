@@ -157,3 +157,82 @@ def test_mxe_window_keeps_valid_pairs_and_respects_max_exon():
 
     # An exon longer than max_exon must fall outside the window and find nothing.
     assert detect_mxe_events(pd.DataFrame(rows), max_exon=50).empty
+
+
+def test_every_mutually_exclusive_pair_is_emitted_not_just_the_first():
+    """Stopping at the first pair lost tandem MXE clusters entirely, and — worse —
+    kept the genomically leftmost pair rather than the best-supported one, so a noise
+    junction to the left could displace the real event."""
+    from splicescope.events import detect_mxe_events
+
+    def j(start, end):
+        return dict(
+            chrom="chr1", start=start, end=end, strand="+",
+            sample="s1", count=50, gene_id="g1",
+        )
+
+    # three candidate exons between the same donor (1000) and acceptor (5000)
+    df = pd.DataFrame(
+        [
+            j(1000, 1100), j(1201, 5000),   # exon A 1101-1200
+            j(1000, 2100), j(2201, 5000),   # exon B 2101-2200
+            j(1000, 3100), j(3201, 5000),   # exon C 3101-3200
+        ]
+    )
+    events = detect_mxe_events(df)
+    pairs = {
+        (r.exonA_start, r.exonA_end, r.exonB_start, r.exonB_end)
+        for r in events.itertuples(index=False)
+    }
+    assert pairs == {
+        (1101, 1200, 2101, 2200),
+        (1101, 1200, 3101, 3200),
+        (2101, 2200, 3101, 3200),
+    }
+
+
+def test_an_mxe_exon_is_not_lost_from_detect_events_altogether():
+    """A dropped MXE exon could not fall through to A5SS/A3SS either: its junctions
+    share the donor and acceptor of the emitted pair, so after exclusion each site was
+    left with a single alternative and the exon vanished from every event type."""
+    from splicescope.events import detect_events
+
+    def j(start, end):
+        return dict(
+            chrom="chr1", start=start, end=end, strand="+",
+            sample="s1", count=50, gene_id="g1",
+        )
+
+    df = pd.DataFrame(
+        [
+            j(1000, 1100), j(1201, 5000),
+            j(1000, 2100), j(2201, 5000),
+            j(1000, 3100), j(3201, 5000),
+        ]
+    )
+    table = detect_events(df)
+    text = table.to_string()
+    for boundary in ("1101", "2101", "3101"):
+        assert boundary in text, f"exon starting at {boundary} is missing from events"
+
+
+def test_max_exon_is_reachable_through_detect_events():
+    """The 1 kb candidate window was hard-coded for everyone using the public entry point."""
+    from splicescope.events import detect_events
+
+    def j(start, end):
+        return dict(
+            chrom="chr1", start=start, end=end, strand="+",
+            sample="s1", count=50, gene_id="g1",
+        )
+
+    # both candidate exons are 1,500 bp long — outside the default window
+    df = pd.DataFrame(
+        [
+            j(1000, 1100), j(2601, 9000),   # exon 1101-2600
+            j(1000, 3100), j(4601, 9000),   # exon 3101-4600
+        ]
+    )
+    assert detect_events(df, types=("MXE",)).empty
+    widened = detect_events(df, types=("MXE",), max_exon=2000)
+    assert len(widened) == 1

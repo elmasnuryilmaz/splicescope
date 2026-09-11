@@ -65,16 +65,24 @@ pip install -e ".[dev]"          # add ",app" for the Streamlit dashboard
 ## Quickstart
 
 ```bash
-# 1) write a synthetic, ground-truth dataset (STAR SJ.out.tab + GTF + groups.tsv)
+# 1) write a synthetic, ground-truth dataset: STAR SJ.out.tab + GTF (with CDS)
+#    + groups.tsv + an indexed genome whose genes carry real open reading frames
 splicescope simulate --outdir demo_data
 
-# 2) run the whole pipeline: annotate -> quantify -> differential -> figures
+# 2) run the whole pipeline: annotate -> quantify -> events -> differential
+#    -> protein consequence -> figures
 splicescope run \
     --sj-dir demo_data/sj \
     --gtf    demo_data/annotation.gtf \
     --groups demo_data/groups.tsv \
+    --genome demo_data/genome.fa \
     --outdir results
 ```
+
+Drop `--genome` and everything except the consequence step still runs. Nothing is
+downloaded: the simulated chromosome is built from sense codons and canonical `GT`/`AG`
+intron ends, so a cryptic exon spliced into it genuinely shifts the frame and genuinely
+does, or does not, hit a stop codon.
 
 Or drive it from Python:
 
@@ -115,7 +123,7 @@ flowchart LR
 | **Differential** | `diff` | ΔΨ between two conditions, beta-binomial likelihood-ratio test on read counts, Benjamini–Hochberg FDR (junction- or event-level) |
 | **Features** | `cryptic` | intron length, read support, recurrence, motif, distance to known sites … |
 | **Learn** | `ml` | RandomForest + StandardScaler, stratified-CV, permutation importance, model card |
-| **Consequence** | `consequence` | reading frame, premature stop codon and NMD prediction per exon |
+| **Consequence** | `consequence` | reading frame, premature stop codon and NMD prediction, for cassette exons and for splice-site shifts |
 | **Enrich** | `enrich` | hypergeometric pathway over-representation (ORA) with BH-FDR, any GMT gene sets |
 | **Visualize** | `plotting` | publication-quality panels (headless-safe) |
 
@@ -123,7 +131,11 @@ The synthetic generator (`simulate`) is biologically faithful: a cryptic exon pr
 `novel_acceptor` junction that shares the upstream *known* donor and a `novel_donor`
 junction that shares the downstream *known* acceptor, up-regulated in one condition, on a
 background of canonical introns and noise. An optional `label_noise` reflects imperfect
-curation so the ML task is realistically hard rather than trivially separable.
+curation so the ML task is realistically hard rather than trivially separable. It also
+writes the matching chromosome — coding exons drawn from the 61 sense codons, canonical
+`GT`/`AG` intron ends, and the 5′UTR staggered per gene so the coding frame at an intron
+boundary cycles through 0, 1 and 2 — which is what lets the consequence layer be tested
+rather than only asserted.
 
 > **Formal definitions** — the Ψ metric, the differential-splicing statistics, the
 > classifier's leakage-free evaluation protocol and the simulation model are all
@@ -141,7 +153,7 @@ curation so the ML task is realistically hard rather than trivially separable.
 ## Testing
 
 ```bash
-pytest            # 12 tests: unit + property + an end-to-end CLI run
+pytest            # 83 tests: unit + property + end-to-end CLI runs
 ruff check .      # lint
 ```
 
@@ -173,6 +185,10 @@ tolerated, shift the reading frame, or introduce a premature termination codon t
 the transcript to nonsense-mediated decay — which is how TDP-43 cryptic exons deplete
 proteins such as STMN2 and UNC13A.
 
+Passing `--genome` to `run` folds this into the pipeline, writing `consequence.tsv` for
+cassette exons and `junction_consequence.tsv` for splice-site shifts. Candidates produced
+elsewhere — an existing rMATS or LeafCutter run — go through the standalone command:
+
 ```bash
 splicescope consequence \
     --events results/events.tsv \
@@ -181,13 +197,20 @@ splicescope consequence \
     --out    results/consequence.tsv
 ```
 
-Cassette exons are given as exon intervals; novel donors and acceptors are given as
-junctions and resolved against the annotation, which matters because splice-site shifts
-outnumber cassettes among reported cryptic events. The genome needs its `samtools faidx`
-index next to it; nothing else is required. Each
-exon is classified as `ptc_nmd`, `ptc_escape`, `frameshift`, `in_frame_insertion`,
+Cassette exons are given as exon intervals (`exon_start`/`exon_end`); novel donors and
+acceptors are given as junctions (`start`/`end`) and resolved against the annotation into
+the sequence they add to, or remove from, the neighbouring exon — which matters because
+splice-site shifts outnumber cassettes among reported cryptic events. `--mode` picks
+between the two and defaults to reading it off the columns present. The genome needs its
+`samtools faidx` index next to it; nothing else is required. Each event is classified as
+`ptc_nmd`, `ptc_escape`, `frameshift`, `exon_truncation`, `in_frame_insertion`,
 `utr_insertion`, `non_coding_host` or `no_host_transcript`, alongside the inherited frame,
 the PTC offset and its distance to the last exon-exon junction.
+
+A junction already explained by a detected cassette or MXE event is *not* also reported as
+a splice-site shift: on its own, a cassette inclusion junction reads as an exon extension
+running to the end of the intron, which is the wrong interpretation of it. On the built-in
+demo that exclusion removes 12 of 31 candidate junctions.
 
 > Use the **full** GENCODE annotation, not `basic`. The reduced set is missing transcripts
 > and leaves far more events without a host intron (43% vs 20% on the same 300 exons).

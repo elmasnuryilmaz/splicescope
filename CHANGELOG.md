@@ -7,6 +7,31 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- **The protein-consequence layer now runs on the built-in data, with no downloads.**
+  `simulate` writes the chromosome its annotation describes: coding exons drawn from the
+  61 sense codons so every gene carries a real open reading frame ending in a single stop,
+  canonical `GT`/`AG` intron ends, CDS records in the GTF, and a `.fai` index. The 5′UTR is
+  staggered by one base per gene so the coding frame at an intron boundary cycles through
+  0, 1 and 2 — with the uniform 120 bp exons a fixed UTR put every intron on a codon
+  boundary, and frame inheritance, the subtle half of the prediction, was never exercised.
+  `simulate_genome` uses its own random stream, so no junction-level number moves.
+- **Splice-site shifts are reachable from the command line.** `run --genome` now writes
+  `junction_consequence.tsv` beside `consequence.tsv`, and `consequence` gained
+  `--mode {auto,exon,junction}`, defaulting to reading the mode off the columns present.
+  `annotate_junction_consequences` — the headline of 0.8.0, and already described in the
+  README — existed only as a Python API and could not be invoked by a user.
+- A junction already explained by a detected cassette or MXE event is excluded from the
+  splice-site-shift pass. Read on its own, a cassette inclusion junction looks like an exon
+  extension running to the end of the intron, which is the wrong reading of it; on the demo
+  this removes 12 of 31 candidate junctions.
+- `plot_consequence_summary`, and the `event_summary` / `event_volcano` figures that
+  `plotting` had provided since 0.4.0 but `run` never called.
+- 14 tests for the above, including that the simulated ORFs translate cleanly, that the
+  `.fai` offsets address the FASTA correctly across line boundaries, that all three reading
+  frames occur, and that cassette junctions are not double-reported as shifts.
+- CI smoke-tests the consequence path end to end.
+
+### Added (previously)
 - Test coverage for the plotting module: threshold behaviour of both volcano
   plots, fixed event-type ordering with zero-fill, top-N truncation in the
   enrichment plot, and that `savefig` creates missing parent directories.

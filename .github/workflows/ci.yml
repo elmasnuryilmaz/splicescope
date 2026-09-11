@@ -38,5 +38,10 @@ jobs:
         run: |
           splicescope simulate --outdir demo_data --genes 6
           splicescope run --sj-dir demo_data/sj --gtf demo_data/annotation.gtf \
-            --groups demo_data/groups.tsv --outdir results
+            --groups demo_data/groups.tsv --genome demo_data/genome.fa \
+            --outdir results
           test -f results/differential_splicing.tsv
+          test -f results/events.tsv
+          # the consequence layer must run on the built-in data, with no downloads
+          test -f results/consequence.tsv
+          test -f results/junction_consequence.tsv

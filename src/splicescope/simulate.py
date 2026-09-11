@@ -219,25 +219,131 @@ def simulate_dataset(
     return SimulatedDataset(known=known, observed=observed, groups=groups)
 
 
-def write_dataset(ds: SimulatedDataset, outdir: str | Path) -> Path:
-    """Write a simulated dataset to disk as a GTF, per-sample SJ.out.tab and groups.tsv."""
-    outdir = Path(outdir)
-    (outdir / "sj").mkdir(parents=True, exist_ok=True)
+_BASES = ("A", "C", "G", "T")
+_STOP_CODONS = ("TAA", "TAG", "TGA")
+#: The 61 sense codons. Coding exons are built from these so that every simulated
+#: gene carries a genuine open reading frame and a stop only where one is intended.
+_SENSE_CODONS = [
+    a + b + c for a in _BASES for b in _BASES for c in _BASES if a + b + c not in _STOP_CODONS
+]
 
-    # minimal GTF (exons implied by introns: reconstruct exon blocks per gene)
-    gtf_lines = []
+
+def gene_exons(ds: SimulatedDataset) -> dict[str, list[tuple[int, int]]]:
+    """Exon blocks per gene, reconstructed from the known introns (120 bp flanks)."""
+    out: dict[str, list[tuple[int, int]]] = {}
     for gene_id, sub in ds.known.groupby("gene_id"):
         introns = sorted(zip(sub["start"], sub["end"], strict=False))
-        # reconstruct exon blocks that flank the known introns (120 bp flanks)
         exon_coords = []
         prev_end = introns[0][0] - 121
         for i_start, i_end in introns:
             exon_coords.append((prev_end + 1, i_start - 1))
             prev_end = i_end
         exon_coords.append((prev_end + 1, prev_end + 120))
+        out[str(gene_id)] = exon_coords
+    return out
+
+
+def _mature_to_genomic(
+    blocks: list[tuple[int, int]], offset: int, length: int
+) -> list[tuple[int, int]]:
+    """Genomic intervals covering ``[offset, offset+length)`` of the mature transcript."""
+    out, pos = [], 0
+    for s, e in blocks:
+        n = e - s + 1
+        lo, hi = max(offset, pos), min(offset + length, pos + n)
+        if hi > lo:
+            out.append((s + lo - pos, s + hi - 1 - pos))
+        pos += n
+    return out
+
+
+def simulate_genome(
+    ds: SimulatedDataset, utr5: int = 30, utr3: int = 60, seed: int = 0
+) -> tuple[str, dict[str, list[tuple[int, int]]]]:
+    """Build a synthetic chromosome consistent with the simulated annotation.
+
+    Exonic sequence is drawn from sense codons, so every gene carries a real open
+    reading frame that ends in a single stop; intron ends carry the canonical
+    ``GT``/``AG`` dinucleotides; everything else is random. That is enough for the
+    protein-consequence layer to be exercised end to end — a cryptic exon spliced
+    into one of these transcripts genuinely shifts the frame and genuinely has (or
+    has not) an in-frame stop, rather than being asserted to.
+
+    Uses its own random stream, so the junction data in ``ds`` is untouched.
+    Returns the chromosome sequence and the CDS blocks of each gene.
+    """
+    rng = np.random.default_rng(seed)
+    exons_by_gene = gene_exons(ds)
+    span = max(e for blocks in exons_by_gene.values() for _, e in blocks)
+    seq = list(rng.choice(_BASES, size=span + 120))
+
+    cds_blocks: dict[str, list[tuple[int, int]]] = {}
+    for gene_index, (gene_id, blocks) in enumerate(exons_by_gene.items()):
+        # Stagger the 5'UTR by one base per gene so the coding frame at an intron
+        # boundary cycles through 0, 1 and 2. Exons here are all 120 bp, so a fixed
+        # UTR would put every intron on a codon boundary and frame inheritance —
+        # the subtle part of the consequence layer — would never be exercised.
+        gene_utr5 = utr5 - 1 + gene_index % 3
+        mature_len = sum(e - s + 1 for s, e in blocks)
+        cds_len = max(0, (mature_len - gene_utr5 - utr3) // 3 * 3)
+        if cds_len < 6:
+            continue
+        utr5_len = gene_utr5
+        codons = [*rng.choice(_SENSE_CODONS, size=cds_len // 3 - 1), "TAA"]
+        mature = (
+            "".join(rng.choice(_BASES, size=utr5_len))
+            + "".join(codons)
+            + "".join(rng.choice(_BASES, size=mature_len - utr5_len - cds_len))
+        )
+        offset = 0
+        for s, e in blocks:
+            n = e - s + 1
+            seq[s - 1 : e] = list(mature[offset : offset + n])
+            offset += n
+        cds_blocks[gene_id] = _mature_to_genomic(blocks, utr5_len, cds_len)
+
+    for _, i_start, i_end, _, _ in ds.known.itertuples(index=False):
+        seq[i_start - 1], seq[i_start] = "G", "T"  # donor GT
+        seq[i_end - 2], seq[i_end - 1] = "A", "G"  # acceptor AG
+
+    return "".join(seq), cds_blocks
+
+
+def write_fasta(sequence: str, path: str | Path, name: str = "chr1", width: int = 60) -> Path:
+    """Write ``sequence`` as a FASTA plus the ``.fai`` index :class:`GenomeFasta` needs."""
+    path = Path(path)
+    header = f">{name}\n"
+    lines = [sequence[i : i + width] for i in range(0, len(sequence), width)]
+    path.write_text(header + "\n".join(lines) + "\n")
+    fai = path.with_suffix(path.suffix + ".fai")
+    fai.write_text(f"{name}\t{len(sequence)}\t{len(header)}\t{width}\t{width + 1}\n")
+    return path
+
+
+def write_dataset(ds: SimulatedDataset, outdir: str | Path, seed: int = 0) -> Path:
+    """Write a simulated dataset: GTF, per-sample SJ.out.tab, groups.tsv and a genome.
+
+    The GTF carries CDS records and the genome is written with its ``.fai``, so the
+    protein-consequence layer runs on the built-in data with no downloads.
+    """
+    outdir = Path(outdir)
+    (outdir / "sj").mkdir(parents=True, exist_ok=True)
+
+    genome, cds_blocks = simulate_genome(ds, seed=seed)
+    write_fasta(genome, outdir / "genome.fa")
+
+    gtf_lines = []
+    for gene_id, exon_coords in gene_exons(ds).items():
+        attrs = (
+            f'gene_id "{gene_id}"; transcript_id "{gene_id}.t1"; gene_name "{gene_id}";'
+        )
         for es, ee in exon_coords:
-            attrs = f'gene_id "{gene_id}"; transcript_id "{gene_id}.t1";'
             gtf_lines.append(f"chr1\tsim\texon\t{es}\t{ee}\t.\t+\t.\t{attrs}")
+        written = 0
+        for cs, ce in cds_blocks.get(gene_id, []):
+            phase = (3 - written % 3) % 3  # GTF frame: bases to remove to reach a codon start
+            gtf_lines.append(f"chr1\tsim\tCDS\t{cs}\t{ce}\t.\t+\t{phase}\t{attrs}")
+            written += ce - cs + 1
     (outdir / "annotation.gtf").write_text("\n".join(gtf_lines) + "\n")
 
     star_cols = [

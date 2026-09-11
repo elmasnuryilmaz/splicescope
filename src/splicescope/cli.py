@@ -27,9 +27,10 @@ def _cmd_simulate(args: argparse.Namespace) -> int:
         mxe_fraction=args.mxe,
         seed=args.seed,
     )
-    out = write_dataset(ds, args.outdir)
+    out = write_dataset(ds, args.outdir, seed=args.seed)
     n_junc = ds.observed.drop_duplicates(["chrom", "start", "end", "strand"]).shape[0]
     print(f"[simulate] wrote {n_junc} unique junctions for {len(ds.groups)} samples -> {out}")
+    print(f"[simulate] annotation.gtf (with CDS) and genome.fa (+.fai) written to {out}")
     return 0
 
 
@@ -89,20 +90,49 @@ def _cmd_run(args: argparse.Namespace) -> int:
             f"[run] {len(evs)} events {by_type}; "
             f"{len(_diff.significant(ediff))} differentially spliced (ΔΨ)"
         )
-        if not ediff.empty:
+        fig, ax = _plot.plt.subplots(figsize=(5, 3.2))
+        _plot.plot_event_summary(evs, ax=ax)
+        _plot.savefig(fig, figs / "event_summary.png")
+        if not ediff.empty and "event_type" in ediff:
             fig, ax = _plot.plt.subplots(figsize=(5, 4))
-            _plot.plot_volcano(ediff, ax=ax)
-            ax.set_title("Differential exon inclusion (SE / A5SS / A3SS)")
+            _plot.plot_event_volcano(ediff, ax=ax)
             _plot.savefig(fig, figs / "event_volcano.png")
 
-    # protein-level consequence of cassette exons (needs an indexed genome)
-    if args.genome and not evs.empty:
-        cons = _consequence_table(evs, args.gtf, args.genome)
-        if cons is None:
-            return 2
-        cons.to_csv(outdir / "consequence.tsv", sep="\t", index=False)
-        counts = cons["consequence_class"].value_counts().to_dict()
-        print(f"[run] consequence for {len(cons)} cassette exons: {counts}")
+    # protein-level consequence (needs an indexed genome)
+    if args.genome:
+        if not evs.empty:
+            cons = _consequence_table(evs, args.gtf, args.genome, mode="exon")
+            if cons is None:
+                return 2
+            if not cons.empty:
+                _write_consequence(cons, outdir / "consequence.tsv", "cassette exons")
+                fig, ax = _plot.plt.subplots(figsize=(5.5, 3.2))
+                _plot.plot_consequence_summary(cons, ax=ax)
+                _plot.savefig(fig, figs / "consequence.png")
+
+        # Splice-site shifts: a novel donor or acceptor anchored on an annotated site.
+        # These are the majority of cryptic events junction-level callers report and
+        # they are not cassette exons, so they need the junction-level interpretation.
+        # Junctions already explained by a detected event are left out: read on its
+        # own, a cassette-exon inclusion junction looks like an exon extension that
+        # runs to the end of the intron, which is the wrong reading of it.
+        shifts = (
+            annotated[
+                annotated["sclass"].isin(SHIFT_CLASSES)
+                & ~_junction_index(annotated).isin(_event_junctions(evs))
+            ]
+            .drop_duplicates(subset=["chrom", "start", "end", "strand"])
+            .loc[:, ["chrom", "start", "end", "strand", "sclass", "gene_id"]]
+            .reset_index(drop=True)
+        )
+        if not shifts.empty:
+            jcons = _consequence_table(shifts, args.gtf, args.genome, mode="junction")
+            if jcons is None:
+                return 2
+            _write_consequence(jcons, outdir / "junction_consequence.tsv", "splice-site shifts")
+            fig, ax = _plot.plt.subplots(figsize=(5.5, 3.2))
+            _plot.plot_consequence_summary(jcons, ax=ax)
+            _plot.savefig(fig, figs / "junction_consequence.png")
 
     # pathway over-representation (only if the user supplies real gene sets)
     if args.gene_sets:
@@ -139,43 +169,125 @@ def _cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
-def _consequence_table(events, gtf: str, genome: str):
-    """Predict consequences for a table of cassette exons; None on a bad genome."""
-    from .consequence import GenomeFasta, annotate_consequences, load_transcripts
+#: Junction coordinate columns each event type is built from.
+_EVENT_JUNCTION_COLUMNS = {
+    "SE": (("inc1_start", "inc1_end"), ("inc2_start", "inc2_end"), ("skip_start", "skip_end")),
+    "MXE": (
+        ("a_j1_start", "a_j1_end"),
+        ("a_j2_start", "a_j2_end"),
+        ("b_j1_start", "b_j1_end"),
+        ("b_j2_start", "b_j2_end"),
+    ),
+}
 
-    cassettes = events[events["event_type"] == "SE"].copy() if "event_type" in events else events
-    if cassettes.empty:
-        return cassettes
-    genes = set(cassettes["gene_id"].dropna().astype(str)) if "gene_id" in cassettes else None
+
+def _junction_index(df):
+    """A Series of ``(chrom, start, end, strand)`` tuples aligned to ``df``."""
+    import pandas as pd
+
+    return pd.Series(
+        list(zip(df["chrom"], df["start"], df["end"], df["strand"], strict=False)),
+        index=df.index,
+    )
+
+
+def _event_junctions(events) -> set:
+    """Every junction coordinate consumed by a detected SE or MXE event."""
+    out: set = set()
+    if events is None or events.empty or "event_type" not in events:
+        return out
+    for etype, pairs in _EVENT_JUNCTION_COLUMNS.items():
+        sub = events[events["event_type"] == etype]
+        if sub.empty:
+            continue
+        for start_col, end_col in pairs:
+            if start_col not in sub.columns:
+                continue
+            block = sub[["chrom", start_col, end_col, "strand"]].dropna()
+            out.update(
+                (c, int(s), int(e), st) for c, s, e, st in block.itertuples(index=False)
+            )
+    return out
+
+
+#: Columns each consequence mode reads, and the label used in messages.
+_CONSEQUENCE_MODES = {
+    "exon": (("exon_start", "exon_end"), "cassette exons"),
+    "junction": (("start", "end"), "splice-site shifts"),
+}
+
+#: Junction classes that a splice-site shift can be resolved against the annotation.
+#: ``novel_combination`` is deliberately excluded: both of its sites are annotated, so
+#: it is an exon-skipping junction rather than a shifted splice site, and reading it as
+#: a shift would report the skipped exon as a "truncation".
+SHIFT_CLASSES = ("novel_donor", "novel_acceptor")
+
+
+def _consequence_table(events, gtf: str, genome: str, mode: str = "exon"):
+    """Predict protein consequences for a table of events; ``None`` on a bad genome.
+
+    ``mode="exon"`` treats each row as a cassette exon interval; ``mode="junction"``
+    treats it as an intron whose novel splice site is resolved against the annotation
+    into the sequence it adds to, or removes from, the neighbouring exon.
+    """
+    from .consequence import (
+        GenomeFasta,
+        annotate_consequences,
+        annotate_junction_consequences,
+        load_transcripts,
+    )
+
+    (start_col, end_col), _ = _CONSEQUENCE_MODES[mode]
+    if mode == "exon" and "event_type" in events:
+        table = events[events["event_type"] == "SE"].copy()
+    else:
+        table = events.copy()
+    if table.empty:
+        return table
+    genes = set(table["gene_id"].dropna().astype(str)) if "gene_id" in table else None
     transcripts = load_transcripts(gtf, genes=genes or None)
+    annotate = annotate_consequences if mode == "exon" else annotate_junction_consequences
     try:
         with GenomeFasta(genome) as fasta:
-            return annotate_consequences(
-                cassettes,
-                transcripts,
-                fasta,
-                start_col="exon_start",
-                end_col="exon_end",
-            )
+            return annotate(table, transcripts, fasta, start_col=start_col, end_col=end_col)
     except FileNotFoundError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return None
+
+
+def _write_consequence(table, out_path, label: str) -> None:
+    table.to_csv(out_path, sep="\t", index=False)
+    counts = table["consequence_class"].value_counts().to_dict()
+    print(f"[consequence] {len(table)} {label} -> {out_path}")
+    print(f"[consequence] {counts}")
 
 
 def _cmd_consequence(args: argparse.Namespace) -> int:
     import pandas as pd
 
     events = pd.read_csv(args.events, sep="\t")
-    missing = {"chrom", "strand", "exon_start", "exon_end"} - set(events.columns)
+    mode = args.mode
+    if mode == "auto":
+        if {"exon_start", "exon_end"} <= set(events.columns):
+            mode = "exon"
+        elif {"start", "end"} <= set(events.columns):
+            mode = "junction"
+        else:
+            print(
+                f"error: {args.events} has neither exon_start/exon_end (cassette exons) "
+                "nor start/end (junctions); pass --mode explicitly",
+                file=sys.stderr,
+            )
+            return 2
+    (start_col, end_col), label = _CONSEQUENCE_MODES[mode]
+    missing = {"chrom", "strand", start_col, end_col} - set(events.columns)
     if missing:
         print(f"error: {args.events} is missing columns {sorted(missing)}", file=sys.stderr)
         return 2
-    table = _consequence_table(events, args.gtf, args.genome)
+    table = _consequence_table(events, args.gtf, args.genome, mode=mode)
     if table is None:
         return 2
-    table.to_csv(args.out, sep="\t", index=False)
-    print(f"[consequence] {len(table)} exons -> {args.out}")
-    print(table["consequence_class"].value_counts().to_string())
+    _write_consequence(table, args.out, label)
     return 0
 
 
@@ -211,12 +323,26 @@ def build_parser() -> argparse.ArgumentParser:
     r.set_defaults(func=_cmd_run)
 
     c = sub.add_parser(
-        "consequence", help="predict frame / PTC / NMD effects for cassette exons"
+        "consequence",
+        help="predict frame / PTC / NMD effects for cassette exons or splice-site shifts",
     )
-    c.add_argument("--events", required=True, help="TSV with chrom, strand, exon_start, exon_end")
+    c.add_argument(
+        "--events",
+        required=True,
+        help="TSV of cassette exons (chrom, strand, exon_start, exon_end) "
+        "or of junctions (chrom, strand, start, end)",
+    )
     c.add_argument("--gtf", required=True)
     c.add_argument("--genome", required=True, help="indexed genome FASTA (.fai required)")
     c.add_argument("--out", required=True)
+    c.add_argument(
+        "--mode",
+        choices=["auto", "exon", "junction"],
+        default="auto",
+        help="'exon' reads exon_start/exon_end as a cassette exon; 'junction' reads "
+        "start/end as an intron and resolves its novel splice site against the "
+        "annotation; 'auto' (default) picks by which columns are present",
+    )
     c.set_defaults(func=_cmd_consequence)
 
     return p

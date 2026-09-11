@@ -105,6 +105,51 @@ def plot_event_volcano(ediff, q: float = 0.05, min_delta: float = 0.1, ax=None):
     return ax
 
 
+#: Consequence classes in the order they are plotted: most disruptive first.
+_CONSEQUENCE_ORDER = [
+    "ptc_nmd",
+    "ptc_escape",
+    "frameshift",
+    "exon_truncation",
+    "in_frame_insertion",
+    "utr_insertion",
+    "non_coding_host",
+    "no_host_transcript",
+]
+#: Protein-disrupting classes are warm, tolerated ones cool, uninterpretable ones grey.
+_CONSEQUENCE_COLORS = {
+    "ptc_nmd": _ACCENT,
+    "ptc_escape": "#ff8fb3",
+    "frameshift": "#ffcb47",
+    "exon_truncation": "#f59e0b",
+    "in_frame_insertion": _CYAN,
+    "utr_insertion": _ACCENT2,
+    "non_coding_host": _MUTED,
+    "no_host_transcript": "#c8ccd8",
+}
+
+
+def plot_consequence_summary(consequence, ax=None):
+    """Bar chart of predicted protein consequences, most disruptive class first.
+
+    Only classes actually present are drawn, so a cassette-exon run and a
+    splice-site-shift run each get a chart scaled to what they found.
+    """
+    if ax is None:
+        _, ax = plt.subplots(figsize=(5.5, 3.2))
+    counts = consequence["consequence_class"].value_counts()
+    order = [c for c in _CONSEQUENCE_ORDER if counts.get(c, 0) > 0]
+    order += [c for c in counts.index if c not in _CONSEQUENCE_ORDER]
+    values = [int(counts.get(c, 0)) for c in order]
+    ax.bar(order, values, color=[_CONSEQUENCE_COLORS.get(c, _MUTED) for c in order])
+    ax.set_ylabel("events")
+    ax.set_title("Predicted protein consequence")
+    ax.set_xticks(range(len(order)))
+    ax.set_xticklabels(order, rotation=30, ha="right", fontsize=8)
+    _style(ax)
+    return ax
+
+
 def plot_enrichment(enrich, top: int = 10, ax=None):
     """Horizontal bar of the most enriched gene sets (−log10 q-value)."""
     if ax is None:

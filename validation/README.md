@@ -64,9 +64,9 @@ the outputs are unchanged apart from row order.
 > there is no junction after it; and exon-skipping junctions are no longer interpreted as
 > splice-site shifts. All three move events *out* of `ptc_nmd`.
 >
-> The second of those has been measured — see [the last-exon
-> correction](#the-last-exon-correction-measured) below. The other two need the GENCODE
-> annotation and the GRCh38 assembly to re-derive, so they remain outstanding.
+> Two of the three have been measured — see [the consequence corrections,
+> measured](#the-consequence-corrections-measured) below. The third, exon-skipping
+> junctions, needs the GENCODE annotation to identify and remains outstanding.
 
 ### The rank test could not work
 
@@ -212,40 +212,48 @@ imperfect — it is defined as "not in the NMD-sensitive table", which was itsel
 at ΔPSI ≥ 0.1, so mildly sensitive events sit among the negatives and bias toward the
 null.
 
-### The last-exon correction, measured
+### The consequence corrections, measured
 
-Up to 0.8.1 a premature stop inside an **extension of the transcript's final exon** was
-called `ptc_nmd`. It cannot be: an extension is contiguous with the exon it joins, so when
-that exon is the last one the stop lies past the final exon–exon junction and the
-50-nucleotide rule has no junction to measure against. The old code measured a distance to
-a junction that does not exist.
+Re-running the caller needs the annotation and the assembly, but two of the three 0.9.0
+corrections recover from the 0.8.x output alone.
 
-Re-running the caller needs the annotation and the assembly, but the affected rows recover
-from the 0.8.x output alone: the old distance formula
-`insert_length − ptc_offset − 3 + Σ downstream_exons[:−1]` collapses to
-`insert_length − ptc_offset − 3` exactly when a single downstream exon remained. **166 of
-3,548** junctions carry that signature. Reproduce with
-[`last_exon_correction.py`](last_exon_correction.py):
+**The last-exon rule.** Up to 0.8.1 a premature stop inside an **extension of the
+transcript's final exon** was called `ptc_nmd`. It cannot be: an extension is contiguous
+with the exon it joins, so when that exon is the last one the stop lies past the final
+exon–exon junction and the 50-nucleotide rule has no junction to measure against. The old
+distance formula `insert_length − ptc_offset − 3 + Σ downstream_exons[:−1]` collapses to
+`insert_length − ptc_offset − 3` exactly when one downstream exon remained, so those rows
+carry an arithmetic signature: **166 of 3,548**.
+
+**The in-frame truncation rule.** Removing a whole number of codons leaves the downstream
+frame untouched, so the first in-frame stop in the retained sequence is the transcript's
+*own*. Every truncation of a multiple-of-three length that was called `ptc_nmd` or
+`ptc_escape` was reporting the annotated stop as premature: **210 of 3,548**, no signature
+needed.
+
+Reproduce both with [`consequence_corrections.py`](consequence_corrections.py):
 
 | | ptc_nmd | % NMD-sensitive | vs no-stop | odds ratio | Fisher p |
 |---|---:|---:|---:|---:|---:|
 | 0.8.1, as published above | 3,017 | 48.5 % | 23.5 % | 3.07 | 4.5e-12 |
-| after the correction | 2,851 | **49.6 %** | 23.5 % | **3.21** | **4.8e-13** |
+| last-exon rule alone | 2,851 | 49.6 % | 23.5 % | 3.21 | 4.8e-13 |
+| both rules | 2,673 | **50.2 %** | 23.5 % | **3.29** | **1.4e-13** |
 
-The contrast sharpens, as a correction that removes misassigned events should. But the
-stronger result is that the correction made a prediction the experiment could have
-refused, and did not:
+The contrast sharpens, as corrections that remove misassigned events should. But the
+stronger result is that each rule made a prediction the experiment could have refused,
+and neither was refused:
 
-| | n | % NMD-sensitive |
-|---|---:|---:|
-| reclassified to `ptc_escape` | 166 | **29.5 %** |
-| still `ptc_nmd` | 2,851 | 49.6 % |
-| no stop possible (baseline) | 196 | 23.5 % |
+| reclassified group | n | % NMD-sensitive | vs the events it left | odds ratio | Fisher p |
+|---|---:|---:|---:|---:|---:|
+| final-exon extensions → `ptc_escape` | 166 | **29.5 %** | 49.6 % | 0.43 | 3.8e-07 |
+| in-frame truncations → `exon_truncation` | 210 | **38.6 %** | 49.0 % | 0.65 | 4.1e-03 |
+| *(no stop possible — baseline)* | 196 | 23.5 % | — | — | — |
 
-Odds ratio 0.43, two-sided Fisher p = 3.8e-07. The 166 events behave like escapers rather
-than decay targets, and sit far closer to the no-stop baseline than to the events they
-were grouped with. The fix is not merely defensible on reading-frame grounds; the
-measured decay data agrees with it.
+Both groups sit below the events they were taken from and above the no-stop baseline. The
+last-exon rule is much the stronger of the two; the in-frame truncation rule moves the
+same way more weakly. Neither argument rests on the decay data — both follow from where
+the reading frame and the exon–exon junctions are — so the agreement is a check, not a
+fit.
 
 **A coordinate trap worth recording.** The junction table reports the flanking exon
 boundaries, not the intron: the true intron is `[start + 1, end − 1]`. Taken literally,

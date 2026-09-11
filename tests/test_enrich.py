@@ -233,11 +233,9 @@ def test_weighting_by_opportunity_defuses_a_pure_size_effect():
     assert weighted["bias_odds"] > 1.5, "the set should be flagged as opportunity-rich"
 
 
-def test_the_correction_removes_the_extreme_tail_of_false_positives():
+def test_the_correction_removes_the_false_positives():
     """Measured rather than asserted: across biologically null but size-biased sets the
-    plain test calls essentially all of them, the weighted one calls far fewer. The
-    correction is large but not complete — the Wallenius approximation leaves a residue,
-    exactly as it does in goseq."""
+    plain test calls essentially all of them, the weighted one calls almost none."""
     plain_p, weighted_p = [], []
     for seed in range(4):
         genes, hits, weights, largest = _size_driven_universe(seed=seed)
@@ -254,7 +252,7 @@ def test_the_correction_removes_the_extreme_tail_of_false_positives():
     weighted_p = np.concatenate(weighted_p)
 
     assert (plain_p <= 0.05).mean() > 0.9, "the uncorrected null should fail almost always"
-    assert (weighted_p <= 0.05).mean() < 0.4
+    assert (weighted_p <= 0.05).mean() < 0.10, "the corrected null should be near nominal"
     assert (weighted_p <= 1e-6).mean() == 0.0, "no confident false call should survive"
 
 
@@ -297,3 +295,40 @@ def test_enrich_differential_weights_by_units_per_gene_by_default():
     assert not weighted.empty and not unweighted.empty
     assert weighted.iloc[0]["bias_odds"] > 1.0
     assert unweighted.iloc[0]["bias_odds"] == 1.0
+
+
+def test_the_odds_are_averaged_not_the_probabilities():
+    """Wallenius' ω is a ratio of sampling weights, so the quantity to average is
+    p/(1-p). goseq averages the probabilities instead; the two agree only while p is
+    small, and a selection propensity here reaches 0.5."""
+    from splicescope.enrich import _bias_odds
+
+    # two genes inside at p = 0.5, two outside at p = 0.25
+    propensity = {"A": 0.5, "B": 0.5, "C": 0.25, "D": 0.25}
+    odds = _bias_odds({"A", "B"}, set(propensity), propensity)
+
+    ratio_of_probabilities = 0.5 / 0.25                      # what goseq would use
+    ratio_of_odds = (0.5 / 0.5) / (0.25 / 0.75)              # what Wallenius asks for
+    assert odds == pytest.approx(ratio_of_odds)
+    assert odds == pytest.approx(3.0)
+    assert odds != pytest.approx(ratio_of_probabilities)
+
+
+def test_weighting_keeps_the_power_to_detect_a_real_enrichment():
+    """A correction that removed the false positives by refusing to call anything would
+    be no use. A genuinely enriched set must survive it."""
+    rng = np.random.default_rng(7)
+    n_genes = 800
+    genes = [f"G{i:04d}" for i in range(n_genes)]
+    units = rng.integers(1, 60, size=n_genes)
+    true_set = set(rng.choice(genes, size=120, replace=False))
+    hits = [
+        g
+        for g, u in zip(genes, units, strict=True)
+        if rng.random() < min(0.95, u / units.max() * 0.5 + (0.25 if g in true_set else 0.0))
+    ]
+    weights = dict(zip(genes, units.astype(float), strict=True))
+
+    result = over_representation(hits, genes, {"REAL": sorted(true_set)}, weights=weights)
+    assert len(result) == 1
+    assert result.iloc[0]["pvalue"] < 0.01, "a real enrichment must still be found"

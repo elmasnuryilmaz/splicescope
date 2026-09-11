@@ -15,11 +15,15 @@ All notable changes to this project are documented here. The format is based on
   count, the plain test called **100 %** of them at p ≤ 0.05 and 52 % at p ≤ 1e-6. Genes
   are now binned by unit count, each bin's observed hit rate becomes its members'
   propensity, and the p-value comes from Wallenius' non-central hypergeometric with
-  odds = (mean propensity inside the set) / (mean outside) — `goseq`'s device applied to
-  junction count instead of transcript length. The same simulation then gives 19 % at
-  p ≤ 0.05 and **0 %** at p ≤ 1e-6. It is a large correction, not a complete one, and
-  `docs/METHODS.md` §7b says so; `bias_odds` reports the odds per set and
+  odds = (mean of `p/(1-p)` inside the set) / (mean outside) — `goseq`'s device applied to
+  junction count instead of transcript length. The same simulation then gives **1.9 %** at
+  p ≤ 0.05 and 0 % at p ≤ 1e-6. `bias_odds` reports the odds per set and
   `weight_by_units=False` restores the plain test, which Wallenius equals at odds 1.
+  One deliberate departure from `goseq`: it averages probabilities where this averages
+  odds. They agree while `p` is small, but a propensity here reaches 0.5, and at identical
+  power (90 % detection of a set enriched by 0.10, 100 % above) averaging probabilities
+  leaves **38–40 %** of the null sets called at p ≤ 0.05 against **0 %** for odds.
+  Wallenius' `ω` is a ratio of sampling weights, which is what the odds are.
 
 ### Fixed
 - **`normalize_gene_id` collapsed whole gene families in a model organism.** 0.9.0 began

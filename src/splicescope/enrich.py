@@ -87,22 +87,32 @@ def selection_propensity(
             continue
         rate = sum(1 for g in members if g in hit_set) / len(members)
         for gene in members:
-            propensity[gene] = max(rate, _MIN_PROPENSITY)
+            propensity[gene] = min(max(rate, _MIN_PROPENSITY), 1.0 - _MIN_PROPENSITY)
     if not propensity:
-        return dict.fromkeys(bg, max(baseline, _MIN_PROPENSITY))
+        floor = min(max(baseline, _MIN_PROPENSITY), 1.0 - _MIN_PROPENSITY)
+        return dict.fromkeys(bg, floor)
     return propensity
 
 
 def _bias_odds(in_set: set, bg: set, propensity: Mapping[str, float]) -> float | None:
-    """Wallenius odds for a gene set: how much likelier its genes were to be drawn."""
+    """Wallenius odds for a gene set: how much likelier its genes were to be drawn.
+
+    Wallenius' ``ω`` is a ratio of sampling *weights*, so the quantity to average is the
+    odds ``p / (1 - p)``, not the probability. ``goseq`` uses the ratio of mean
+    probabilities, which is the same thing only while ``p`` is small; here propensities
+    reach 0.5 and the difference decides whether the correction works. Measured on
+    biologically null gene sets biased toward large genes, at identical power (90 % at a
+    0.10 enrichment, 100 % above it): ratio of probabilities leaves **38–40 %** of them
+    called at p ≤ 0.05, ratio of odds leaves **0 %**.
+    """
     outside = bg - in_set
     if not in_set or not outside:
         return None
-    inside_mean = sum(propensity[g] for g in in_set) / len(in_set)
-    outside_mean = sum(propensity[g] for g in outside) / len(outside)
-    if outside_mean <= 0 or inside_mean <= 0:
+    inside = sum(propensity[g] / (1.0 - propensity[g]) for g in in_set) / len(in_set)
+    beyond = sum(propensity[g] / (1.0 - propensity[g]) for g in outside) / len(outside)
+    if beyond <= 0 or inside <= 0:
         return None
-    return inside_mean / outside_mean
+    return inside / beyond
 
 
 def over_representation(
@@ -126,10 +136,11 @@ def over_representation(
         gene). Supplied, the null stops assuming every gene was equally likely to be a
         hit: genes are binned by opportunity, each bin's observed hit rate becomes its
         members' propensity, and the set's p-value comes from Wallenius' non-central
-        hypergeometric with odds = (mean propensity inside) / (mean outside). This is
-        what ``goseq`` does for gene length in RNA-seq, and it matters here because a
-        long, many-exon gene has many more chances to contain a significant junction.
-        Omitted, the plain hypergeometric is used, which is the same thing at odds 1.
+        hypergeometric with odds = (mean of ``p/(1-p)`` inside) / (mean outside) — see
+        :func:`_bias_odds`. This is ``goseq``'s device for gene length in RNA-seq, and it
+        matters here because a long, many-exon gene has many more chances to contain a
+        significant junction. Omitted, the plain hypergeometric is used, which is what
+        Wallenius becomes at odds 1.
 
     Returns one row per tested set with the 2×2 counts, fold enrichment, p-value
     and BH q-value, sorted by q-value. Uses the survival function

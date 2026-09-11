@@ -274,23 +274,30 @@ scoring gene sets biased toward the large genes:
 | | sets called at p ≤ 0.05 | at p ≤ 1e-6 | median p |
 |---|---:|---:|---:|
 | plain hypergeometric | **100 %** | 52 % | 0.000 |
-| opportunity-weighted | 19 % | **0 %** | 0.17 |
+| opportunity-weighted | **1.9 %** | 0 % | 0.62 |
 
 (480 biologically null gene sets over 12 simulated universes of 2,000 genes.)
 
 `enrich_differential` therefore weights by default. Genes are binned by the number of
-units tested in them, each bin's observed hit rate becomes its members' selection
+units tested in them, each bin's observed hit rate `p` becomes its members' selection
 propensity, and a set's p-value comes from **Wallenius' non-central hypergeometric** with
-odds = (mean propensity inside the set) / (mean outside) — the `goseq` device, applied to
-unit count rather than transcript length. The odds are reported as `bias_odds`; at odds 1
-the distribution is exactly the hypergeometric, so `weight_by_units=False` recovers the
-old behaviour.
 
-It is a large correction, not a complete one: 19 % against a nominal 5 % is still
-inflated, and finer binning does not help (the plateau is at ~18 % from 20 bins upward),
-because the residue is in the Wallenius approximation itself rather than in the propensity
-estimate. Read a surviving enrichment as a strong hypothesis, and still check whether the
-set is simply a set of large genes — `bias_odds` says how much.
+$$\omega = \frac{\overline{p/(1-p)}\ \text{inside the set}}{\overline{p/(1-p)}\ \text{outside}}$$
+
+— the `goseq` device, applied to unit count rather than transcript length. The odds are
+reported as `bias_odds`; at `ω = 1` the distribution is exactly the hypergeometric, so
+`weight_by_units=False` recovers the plain test.
+
+**One deliberate departure from `goseq`.** It averages the probabilities rather than the
+odds. The two agree while `p` is small, but a propensity here reaches 0.5 and the
+difference decides whether the correction works: at *identical* power — 90 % detection of
+a set enriched by 0.10, 100 % above that — averaging probabilities still leaves 38–40 % of
+the biologically null sets called at p ≤ 0.05, and averaging odds leaves 0 %. Wallenius'
+`ω` is a ratio of sampling weights, so the odds are the quantity it actually asks for.
+
+The correction is not free of assumptions: the propensity is estimated from the very hits
+being scored, and binning is coarse. Read a surviving enrichment as a strong hypothesis,
+and still check whether the set is simply a set of large genes — `bias_odds` says how much.
 
 ## 8. Simulation model
 

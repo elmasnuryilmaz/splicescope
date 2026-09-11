@@ -13,12 +13,34 @@ enrichment needs real annotations rather than synthetic ones.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Mapping, Sequence
 
 import pandas as pd
 from scipy import stats
 
 from .diff import benjamini_hochberg
+
+_VERSION_SUFFIX = re.compile(r"\.\d+$")
+
+
+def normalize_gene_id(gene: str) -> str:
+    """Put an identifier in the form both sides of an intersection can agree on.
+
+    A GTF gives versioned accessions (``ENSG00000141510.16``, ``NM_000546.6``); gene-set
+    files give either symbols or *unversioned* accessions, so a verbatim comparison
+    matches nothing at all. The version suffix is dropped and the rest upper-cased. Gene
+    symbols do not end in ``.<digits>``, so this is safe for them.
+    """
+    return _VERSION_SUFFIX.sub("", str(gene).strip()).upper()
+
+
+def _normalized_index(values: Iterable[str]) -> dict[str, str]:
+    """Map each normalised identifier to the first original spelling seen."""
+    index: dict[str, str] = {}
+    for value in values:
+        index.setdefault(normalize_gene_id(value), str(value))
+    return index
 
 
 def over_representation(
@@ -42,8 +64,9 @@ def over_representation(
     ``P(X ≥ k) = hypergeom.sf(k-1, M, n, N)`` with ``M`` background size, ``n`` set
     size in background, ``N`` number of hits in background, ``k`` the overlap.
     """
-    bg = set(background)
-    hit_set = set(hits) & bg
+    bg_index = _normalized_index(background)
+    bg = set(bg_index)
+    hit_set = {normalize_gene_id(h) for h in hits} & bg
     M, N = len(bg), len(hit_set)
     if M == 0 or N == 0:
         return pd.DataFrame(
@@ -55,7 +78,7 @@ def over_representation(
 
     records = []
     for term, genes in gene_sets.items():
-        in_bg = set(genes) & bg
+        in_bg = {normalize_gene_id(g) for g in genes} & bg
         n = len(in_bg)
         if n < min_size or (max_size is not None and n > max_size):
             continue
@@ -74,7 +97,7 @@ def over_representation(
                 "n_background": M,
                 "fold_enrichment": fold,
                 "pvalue": p,
-                "genes": ",".join(sorted(overlap)),
+                "genes": ",".join(sorted(bg_index[g] for g in overlap)),
             }
         )
 
@@ -91,17 +114,32 @@ def enrich_differential(
     q: float = 0.05,
     min_delta: float = 0.1,
     gene_col: str = "gene_id",
+    name_col: str = "gene_name",
     **kwargs,
 ) -> pd.DataFrame:
     """Convenience: ORA of significant genes from a differential table.
 
     Hits are the genes of significant units (``q ≤`` threshold and ``|ΔΨ|`` ≥
     ``min_delta``); the background is every gene that was tested.
+
+    Gene sets are keyed by symbols (MSigDB ``*.symbols.gmt``, GO, KEGG) about as often
+    as by accessions, and a GTF supplies both, so whichever of ``gene_col`` and
+    ``name_col`` overlaps the sets more is the one used. Identifiers are matched through
+    :func:`normalize_gene_id` rather than verbatim.
     """
     from .diff import significant
 
-    if diff_table.empty or gene_col not in diff_table.columns:
+    columns = [c for c in (gene_col, name_col) if c and c in diff_table.columns]
+    if diff_table.empty or not columns:
         return over_representation([], [], gene_sets, **kwargs)
-    background = diff_table[gene_col].dropna().unique().tolist()
-    hits = significant(diff_table, q=q, min_delta=min_delta)[gene_col].dropna().unique().tolist()
+
+    members = {normalize_gene_id(g) for genes in gene_sets.values() for g in genes}
+    chosen = max(
+        columns,
+        key=lambda c: len(
+            {normalize_gene_id(g) for g in diff_table[c].dropna().unique()} & members
+        ),
+    )
+    background = diff_table[chosen].dropna().unique().tolist()
+    hits = significant(diff_table, q=q, min_delta=min_delta)[chosen].dropna().unique().tolist()
     return over_representation(hits, background, gene_sets, **kwargs)

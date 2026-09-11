@@ -134,7 +134,8 @@ def read_gtf_junctions(path: str | Path) -> pd.DataFrame:
     """
     path = Path(path)
     exons_by_tx: dict[str, list[tuple[int, int]]] = defaultdict(list)
-    tx_meta: dict[str, tuple[str, str, str]] = {}  # tx -> (chrom, strand, gene_id)
+    # tx -> (chrom, strand, gene_id, gene_name)
+    tx_meta: dict[str, tuple[str, str, str, str]] = {}
 
     with open_text(path) as fh:
         for line in fh:
@@ -149,23 +150,25 @@ def read_gtf_junctions(path: str | Path) -> pd.DataFrame:
             if tx is None:
                 continue
             exons_by_tx[tx].append((int(start), int(end)))
-            tx_meta[tx] = (chrom, strand, a.get("gene_id", tx))
+            gene_id = a.get("gene_id", tx)
+            tx_meta[tx] = (chrom, strand, gene_id, a.get("gene_name", "") or gene_id)
 
-    rows: dict[tuple[str, int, int, str], str] = {}
+    rows: dict[tuple[str, int, int, str], tuple[str, str]] = {}
     for tx, exons in exons_by_tx.items():
-        chrom, strand, gene_id = tx_meta[tx]
+        chrom, strand, gene_id, gene_name = tx_meta[tx]
         exons.sort()
         for (_, e_end), (n_start, _) in zip(exons[:-1], exons[1:], strict=False):
             intron_start = e_end + 1
             intron_end = n_start - 1
             if intron_end < intron_start:
                 continue  # overlapping/degenerate exons
-            rows[(chrom, intron_start, intron_end, strand)] = gene_id
+            rows[(chrom, intron_start, intron_end, strand)] = (gene_id, gene_name)
 
+    columns = ["chrom", "start", "end", "strand", "gene_id", "gene_name"]
     if not rows:
-        return pd.DataFrame(columns=["chrom", "start", "end", "strand", "gene_id"])
-    data = [(c, s, e, st, g) for (c, s, e, st), g in rows.items()]
-    return pd.DataFrame(data, columns=["chrom", "start", "end", "strand", "gene_id"])
+        return pd.DataFrame(columns=columns)
+    data = [(c, s, e, st, g, n) for (c, s, e, st), (g, n) in rows.items()]
+    return pd.DataFrame(data, columns=columns)
 
 
 def read_gmt(path: str | Path) -> dict[str, list[str]]:

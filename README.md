@@ -124,7 +124,7 @@ flowchart LR
 | **Features** | `cryptic` | intron length, read support, recurrence, motif, distance to known sites … |
 | **Learn** | `ml` | RandomForest + StandardScaler, stratified-CV, permutation importance, model card |
 | **Consequence** | `consequence` | reading frame, premature stop codon and NMD prediction, for cassette exons and for splice-site shifts |
-| **Enrich** | `enrich` | hypergeometric pathway over-representation (ORA) with BH-FDR, any GMT gene sets |
+| **Enrich** | `enrich` | hypergeometric pathway over-representation (ORA) with BH-FDR, any GMT gene sets — matched by symbol or accession, versioned or not |
 | **Visualize** | `plotting` | publication-quality panels (headless-safe) |
 
 The synthetic generator (`simulate`) is biologically faithful: a cryptic exon produces a

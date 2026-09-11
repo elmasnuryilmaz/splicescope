@@ -26,17 +26,20 @@ def _site_sets(known: pd.DataFrame):
     junctions = set(
         zip(known["chrom"], known["start"], known["end"], known["strand"], strict=False)
     )
+    has_name = "gene_name" in known.columns
+    columns = ["chrom", "start", "end", "strand", "gene_id"] + (["gene_name"] if has_name else [])
     donors, acceptors, gene_of_site = set(), set(), {}
     gene_of_junction = {}
-    for chrom, start, end, strand, gene in known[
-        ["chrom", "start", "end", "strand", "gene_id"]
-    ].itertuples(index=False):
+    for record in known[columns].itertuples(index=False):
+        chrom, start, end, strand, gene = record[:5]
+        # keep the symbol alongside the accession: gene-set files use one or the other
+        value = (gene, record[5] if has_name else gene)
         d, a = donor_acceptor(start, end, strand)
         donors.add((chrom, d, strand))
         acceptors.add((chrom, a, strand))
-        gene_of_site.setdefault((chrom, d, strand), gene)
-        gene_of_site.setdefault((chrom, a, strand), gene)
-        gene_of_junction[(chrom, start, end, strand)] = gene
+        gene_of_site.setdefault((chrom, d, strand), value)
+        gene_of_site.setdefault((chrom, a, strand), value)
+        gene_of_junction[(chrom, start, end, strand)] = value
     return junctions, donors, acceptors, gene_of_site, gene_of_junction
 
 
@@ -65,7 +68,7 @@ def annotate_junctions(observed: pd.DataFrame, known: pd.DataFrame) -> pd.DataFr
     """
     junctions, donors, acceptors, gene_of_site, gene_of_junction = _site_sets(known)
 
-    sclass, genes = [], []
+    sclass, genes, names = [], [], []
     for chrom, start, end, strand in observed[["chrom", "start", "end", "strand"]].itertuples(
         index=False
     ):
@@ -77,11 +80,13 @@ def annotate_junctions(observed: pd.DataFrame, known: pd.DataFrame) -> pd.DataFr
             or gene_of_site.get((chrom, d, strand))
             or gene_of_site.get((chrom, a, strand))
         )
-        genes.append(gene)
+        genes.append(gene[0] if gene else None)
+        names.append(gene[1] if gene else None)
 
     out = observed.copy()
     out["sclass"] = pd.Categorical(sclass, categories=CLASSES)
     out["gene_id"] = genes
+    out["gene_name"] = names
     out["is_novel"] = out["sclass"] != "annotated"
     return out
 

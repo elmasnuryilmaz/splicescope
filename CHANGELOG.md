@@ -101,6 +101,22 @@ All notable changes to this project are documented here. The format is based on
   CHANGELOG agree — they had drifted to 0.5.0, 0.8.1 and 0.8.1 respectively, so
   `splicescope --version` reported a release three versions old.
 
+### Fixed (enrichment)
+- **Pathway ORA could never test a single gene set against a real annotation.**
+  `over_representation` intersected identifiers verbatim, but a GTF gives versioned
+  accessions (`ENSG00000141510.16`) while every real GMT gives symbols or *unversioned*
+  accessions. No set ever met `min_size`, so the result was always empty — and the CLI
+  reported `0 tested` rather than an error, so the run looked successful. A four-gene set
+  overlapping the background perfectly returned nothing, lost entirely to the `.16`.
+  Identifiers now go through `normalize_gene_id` (version suffix dropped, case-folded).
+- Gene symbols reach the differential table: `read_gtf_junctions` returns `gene_name`,
+  `annotate_junctions` carries it, and `differential_splicing` keeps it. Symbol-keyed
+  gene sets — MSigDB `*.symbols.gmt`, GO, KEGG, i.e. most of them — had nothing to match
+  against before. `enrich_differential` uses whichever of `gene_id`/`gene_name` overlaps
+  the sets more.
+- `run --gene-sets` now warns, with an example identifier from each side, when no gene set
+  shares an identifier with the tested genes.
+
 ### Fixed (packaging and CLI)
 - **`run` reported "0 significant junctions" and exited 0 when sample names did not
   match.** Names were derived with `stem.replace(".SJ.out", "")`, but STAR writes

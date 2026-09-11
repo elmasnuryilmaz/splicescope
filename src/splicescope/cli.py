@@ -180,6 +180,18 @@ def _cmd_run(args: argparse.Namespace) -> int:
         enr.to_csv(outdir / "enrichment.tsv", sep="\t", index=False)
         n_sig = int((enr["qvalue"] <= 0.05).sum()) if not enr.empty else 0
         print(f"[run] enrichment: {len(gene_sets)} sets, {len(enr)} tested, {n_sig} sig (q<=0.05)")
+        if enr.empty and not diff.empty:
+            example_set = next(iter(gene_sets.values()), [""])[:1]
+            example_gene = diff["gene_id"].dropna().head(1).tolist()
+            print(
+                "warning: no gene set shares an identifier with the tested genes, so "
+                "nothing could be tested.\n"
+                f"  gene sets name genes like: {example_set}\n"
+                f"  the annotation names them: {example_gene}\n"
+                "  use a GMT keyed by the same kind of identifier as your GTF "
+                "(symbols work if the GTF carries gene_name).",
+                file=sys.stderr,
+            )
         if not enr.empty:
             fig, ax = _plot.plt.subplots(figsize=(6, 3.6))
             _plot.plot_enrichment(enr, ax=ax)

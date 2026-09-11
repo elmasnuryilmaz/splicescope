@@ -217,7 +217,9 @@ def differential_splicing(
     df["condition"] = df["sample"].map(groups)
     key = key or ["chrom", "start", "end", "strand"]
     extra = [
-        c for c in ("gene_id", "sclass", "event_type") if c in df.columns and c not in key
+        c
+        for c in ("gene_id", "gene_name", "sclass", "event_type")
+        if c in df.columns and c not in key
     ]
 
     counts = _resolve_count_columns(df, value, inc_col, total_col)

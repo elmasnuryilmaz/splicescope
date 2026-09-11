@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import pytest
+from scipy import stats
 
 from splicescope.enrich import enrich_differential, over_representation
 from splicescope.io import read_gmt
@@ -184,3 +185,115 @@ def test_a_worm_gene_family_keeps_every_member_in_the_enrichment():
     assert row["set_size"] == 5
     assert row["overlap"] == 3
     assert set(row["genes"].split(",")) == set(family)
+
+
+# --- the gene-opportunity bias ---------------------------------------------------
+
+
+def _size_driven_universe(seed=0, n_genes=800):
+    """Genes whose only distinguishing feature is how many units were tested in them,
+    and hits drawn purely in proportion to that. There is no biology here at all."""
+    rng = np.random.default_rng(seed)
+    genes = [f"G{i:04d}" for i in range(n_genes)]
+    units = rng.integers(1, 60, size=n_genes)
+    hits = [
+        g
+        for g, u in zip(genes, units, strict=True)
+        if rng.random() < u / units.max() * 0.5
+    ]
+    weights = dict(zip(genes, units.astype(float), strict=True))
+    largest = [g for _, g in sorted(zip(units, genes, strict=True), reverse=True)]
+    return genes, hits, weights, largest
+
+
+def test_unweighted_over_representation_is_still_the_hypergeometric():
+    """Wallenius at odds 1 is the hypergeometric; omitting weights must change nothing."""
+    genes, hits, _, largest = _size_driven_universe()
+    result = over_representation(hits, genes, {"SET": largest[:150]})
+    row = result.iloc[0]
+    expected = stats.hypergeom.sf(
+        row["overlap"] - 1, row["n_background"], row["set_size"], row["n_hits"]
+    )
+    assert row["pvalue"] == pytest.approx(expected)
+    assert row["bias_odds"] == 1.0
+
+
+def test_weighting_by_opportunity_defuses_a_pure_size_effect():
+    """A gene set that is only "the largest genes" is a textbook false positive for ORA
+    on splicing data: a long, many-exon gene has many more chances to contain a
+    significant junction than a two-exon one."""
+    genes, hits, weights, largest = _size_driven_universe()
+    gene_sets = {"BIG_GENES": largest[:150]}
+
+    plain = over_representation(hits, genes, gene_sets).iloc[0]
+    weighted = over_representation(hits, genes, gene_sets, weights=weights).iloc[0]
+
+    assert plain["pvalue"] < 1e-6, "the uncorrected test should be fooled outright"
+    assert weighted["pvalue"] > plain["pvalue"] * 1e6
+    assert weighted["bias_odds"] > 1.5, "the set should be flagged as opportunity-rich"
+
+
+def test_the_correction_removes_the_extreme_tail_of_false_positives():
+    """Measured rather than asserted: across biologically null but size-biased sets the
+    plain test calls essentially all of them, the weighted one calls far fewer. The
+    correction is large but not complete — the Wallenius approximation leaves a residue,
+    exactly as it does in goseq."""
+    plain_p, weighted_p = [], []
+    for seed in range(4):
+        genes, hits, weights, largest = _size_driven_universe(seed=seed)
+        rng = np.random.default_rng(100 + seed)
+        gene_sets = {
+            f"S{s}": list(rng.choice(largest[: 150 + s * 20], size=100, replace=False))
+            for s in range(10)
+        }
+        plain_p.append(over_representation(hits, genes, gene_sets)["pvalue"].to_numpy())
+        weighted_p.append(
+            over_representation(hits, genes, gene_sets, weights=weights)["pvalue"].to_numpy()
+        )
+    plain_p = np.concatenate(plain_p)
+    weighted_p = np.concatenate(weighted_p)
+
+    assert (plain_p <= 0.05).mean() > 0.9, "the uncorrected null should fail almost always"
+    assert (weighted_p <= 0.05).mean() < 0.4
+    assert (weighted_p <= 1e-6).mean() == 0.0, "no confident false call should survive"
+
+
+def test_propensity_rises_with_opportunity():
+    from splicescope.enrich import selection_propensity
+
+    genes, hits, weights, largest = _size_driven_universe()
+    propensity = selection_propensity(genes, hits, weights)
+    smallest_third = [g for g in largest[-200:]]
+    largest_third = [g for g in largest[:200]]
+    assert (
+        sum(propensity[g] for g in largest_third)
+        > sum(propensity[g] for g in smallest_third) * 2
+    )
+
+
+def test_enrich_differential_weights_by_units_per_gene_by_default():
+    """The opportunity measure is sitting right there in the differential table: one row
+    per tested unit."""
+    rows = []
+    for gene, n_units in (("BIG", 40), ("SMALL", 2)):
+        for i in range(n_units):
+            rows.append(
+                {
+                    "gene_id": gene,
+                    "qvalue": 0.001 if i < 2 else 0.9,
+                    "delta_psi": 0.5 if i < 2 else 0.01,
+                    "abs_delta_psi": 0.5 if i < 2 else 0.01,
+                }
+            )
+    for i in range(60):                      # filler genes, one unit each, not hits
+        rows.append(
+            {"gene_id": f"F{i}", "qvalue": 0.9, "delta_psi": 0.01, "abs_delta_psi": 0.01}
+        )
+    table = pd.DataFrame(rows)
+    sets = {"SET": ["BIG", "SMALL", "F0", "F1"]}
+
+    weighted = enrich_differential(table, sets)
+    unweighted = enrich_differential(table, sets, weight_by_units=False)
+    assert not weighted.empty and not unweighted.empty
+    assert weighted.iloc[0]["bias_odds"] > 1.0
+    assert unweighted.iloc[0]["bias_odds"] == 1.0

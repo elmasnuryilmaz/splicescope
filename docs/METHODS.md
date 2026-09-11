@@ -260,14 +260,37 @@ and folds case, because a GTF gives versioned accessions (`ENSG00000141510.16`) 
 gene-set files give symbols or unversioned accessions. Whichever of `gene_id`/`gene_name`
 overlaps the sets more is used.
 
-**A bias worth knowing about.** The hypergeometric null treats every gene as one equally
-likely draw, but genes contribute wildly different numbers of *tested junctions* — a long,
-many-exon gene has far more chances to contain a significant unit than a two-exon one. So
-junction-rich genes are over-represented among the hits for reasons that have nothing to
-do with the biology, exactly as gene length biases GO analysis of RNA-seq (the problem
-`goseq` exists to solve). A length- or count-weighted null is not implemented here; treat
-gene-level ORA on splicing hits as a hypothesis generator, and check whether an enriched
-set is simply a set of large genes.
+**The gene-opportunity bias, and what is done about it.** The hypergeometric null treats
+every gene as one equally likely draw, but genes contribute wildly different numbers of
+*tested junctions* — a long, many-exon gene has far more chances to contain a significant
+unit than a two-exon one. Junction-rich genes are therefore over-represented among the
+hits for reasons that are not biological, exactly as gene length biases GO analysis of
+RNA-seq, which is the problem `goseq` exists to solve.
+
+Left uncorrected this is not a mild distortion. Simulating genes whose hits are drawn
+*purely* in proportion to how many units they contribute — no biology whatsoever — and
+scoring gene sets biased toward the large genes:
+
+| | sets called at p ≤ 0.05 | at p ≤ 1e-6 | median p |
+|---|---:|---:|---:|
+| plain hypergeometric | **100 %** | 52 % | 0.000 |
+| opportunity-weighted | 19 % | **0 %** | 0.17 |
+
+(480 biologically null gene sets over 12 simulated universes of 2,000 genes.)
+
+`enrich_differential` therefore weights by default. Genes are binned by the number of
+units tested in them, each bin's observed hit rate becomes its members' selection
+propensity, and a set's p-value comes from **Wallenius' non-central hypergeometric** with
+odds = (mean propensity inside the set) / (mean outside) — the `goseq` device, applied to
+unit count rather than transcript length. The odds are reported as `bias_odds`; at odds 1
+the distribution is exactly the hypergeometric, so `weight_by_units=False` recovers the
+old behaviour.
+
+It is a large correction, not a complete one: 19 % against a nominal 5 % is still
+inflated, and finer binning does not help (the plateau is at ~18 % from 20 bins upward),
+because the residue is in the Wallenius approximation itself rather than in the propensity
+estimate. Read a surviving enrichment as a strong hypothesis, and still check whether the
+set is simply a set of large genes — `bias_odds` says how much.
 
 ## 8. Simulation model
 

@@ -16,6 +16,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Mapping, Sequence
 
+import numpy as np
 import pandas as pd
 from scipy import stats
 
@@ -25,6 +26,8 @@ _VERSION_SUFFIX = re.compile(r"\.\d+$")
 #: What a de-versioned stem must look like before the suffix is treated as a version:
 #: Ensembl (``ENSG``, ``ENSMUST``, …) or RefSeq-style (``NM_``, ``XP_``, …) accessions.
 _ACCESSION = re.compile(r"^(?:ENS[A-Z]*[EGTP]\d+|[A-Z]{2}_\d+)$", re.IGNORECASE)
+#: Floor for an estimated hit rate, so a bin with no hits still yields finite odds.
+_MIN_PROPENSITY = 1e-6
 
 
 def normalize_gene_id(gene: str) -> str:
@@ -55,12 +58,60 @@ def _normalized_index(values: Iterable[str]) -> dict[str, str]:
     return index
 
 
+def selection_propensity(
+    background: Iterable[str],
+    hits: Iterable[str],
+    weights: Mapping[str, float],
+    bins: int = 10,
+) -> dict[str, float]:
+    """Estimated P(hit) for each background gene, given how much opportunity it had.
+
+    In splicing data "opportunity" is the number of units tested in that gene: a long,
+    many-exon gene offers far more chances to contain a significant junction than a
+    two-exon one, for reasons that have nothing to do with the biology. Genes are binned
+    by that measure and each bin's observed hit rate becomes the propensity of its
+    members — the same device ``goseq`` uses for gene length in RNA-seq.
+    """
+    bg = sorted({normalize_gene_id(g) for g in background})
+    hit_set = {normalize_gene_id(h) for h in hits}
+    if not bg:
+        return {}
+    baseline = len(hit_set & set(bg)) / len(bg)
+    ordered = sorted(bg, key=lambda g: (weights.get(g, 0.0), g))
+    chunks = np.array_split(np.array(ordered, dtype=object), min(bins, len(ordered)))
+
+    propensity: dict[str, float] = {}
+    for chunk in chunks:
+        members = list(chunk)
+        if not members:
+            continue
+        rate = sum(1 for g in members if g in hit_set) / len(members)
+        for gene in members:
+            propensity[gene] = max(rate, _MIN_PROPENSITY)
+    if not propensity:
+        return dict.fromkeys(bg, max(baseline, _MIN_PROPENSITY))
+    return propensity
+
+
+def _bias_odds(in_set: set, bg: set, propensity: Mapping[str, float]) -> float | None:
+    """Wallenius odds for a gene set: how much likelier its genes were to be drawn."""
+    outside = bg - in_set
+    if not in_set or not outside:
+        return None
+    inside_mean = sum(propensity[g] for g in in_set) / len(in_set)
+    outside_mean = sum(propensity[g] for g in outside) / len(outside)
+    if outside_mean <= 0 or inside_mean <= 0:
+        return None
+    return inside_mean / outside_mean
+
+
 def over_representation(
     hits: Iterable[str],
     background: Iterable[str],
     gene_sets: Mapping[str, Sequence[str]],
     min_size: int = 2,
     max_size: int | None = None,
+    weights: Mapping[str, float] | None = None,
 ) -> pd.DataFrame:
     """Hypergeometric over-representation of ``gene_sets`` among ``hits``.
 
@@ -71,20 +122,35 @@ def over_representation(
     gene_sets : mapping of term -> member genes.
     min_size, max_size : restrict to sets of this size *within the background*.
 
+    weights : per-gene opportunity (for splicing, the number of units tested in that
+        gene). Supplied, the null stops assuming every gene was equally likely to be a
+        hit: genes are binned by opportunity, each bin's observed hit rate becomes its
+        members' propensity, and the set's p-value comes from Wallenius' non-central
+        hypergeometric with odds = (mean propensity inside) / (mean outside). This is
+        what ``goseq`` does for gene length in RNA-seq, and it matters here because a
+        long, many-exon gene has many more chances to contain a significant junction.
+        Omitted, the plain hypergeometric is used, which is the same thing at odds 1.
+
     Returns one row per tested set with the 2×2 counts, fold enrichment, p-value
     and BH q-value, sorted by q-value. Uses the survival function
     ``P(X ≥ k) = hypergeom.sf(k-1, M, n, N)`` with ``M`` background size, ``n`` set
-    size in background, ``N`` number of hits in background, ``k`` the overlap.
+    size in background, ``N`` number of hits in background, ``k`` the overlap, plus
+    ``bias_odds`` when weights were given.
     """
     bg_index = _normalized_index(background)
     bg = set(bg_index)
     hit_set = {normalize_gene_id(h) for h in hits} & bg
     M, N = len(bg), len(hit_set)
+    propensity = (
+        selection_propensity(bg, hit_set, {normalize_gene_id(g): w for g, w in weights.items()})
+        if weights
+        else None
+    )
     if M == 0 or N == 0:
         return pd.DataFrame(
             columns=[
                 "term", "set_size", "overlap", "n_hits", "n_background",
-                "fold_enrichment", "pvalue", "qvalue", "genes",
+                "fold_enrichment", "bias_odds", "pvalue", "qvalue", "genes",
             ]
         )
 
@@ -98,7 +164,11 @@ def over_representation(
         k = len(overlap)
         if k == 0:
             continue
-        p = float(stats.hypergeom.sf(k - 1, M, n, N))
+        odds = _bias_odds(in_bg, bg, propensity) if propensity else None
+        if odds is None:
+            p = float(stats.hypergeom.sf(k - 1, M, n, N))
+        else:
+            p = float(stats.nchypergeom_wallenius.sf(k - 1, M, n, N, odds))
         fold = (k / N) / (n / M)
         records.append(
             {
@@ -108,6 +178,7 @@ def over_representation(
                 "n_hits": N,
                 "n_background": M,
                 "fold_enrichment": fold,
+                "bias_odds": odds if odds is not None else 1.0,
                 "pvalue": p,
                 "genes": ",".join(sorted(bg_index[g] for g in overlap)),
             }
@@ -127,6 +198,7 @@ def enrich_differential(
     min_delta: float = 0.1,
     gene_col: str = "gene_id",
     name_col: str = "gene_name",
+    weight_by_units: bool = True,
     **kwargs,
 ) -> pd.DataFrame:
     """Convenience: ORA of significant genes from a differential table.
@@ -138,6 +210,13 @@ def enrich_differential(
     as by accessions, and a GTF supplies both, so whichever of ``gene_col`` and
     ``name_col`` overlaps the sets more is the one used. Identifiers are matched through
     :func:`normalize_gene_id` rather than verbatim.
+
+    ``weight_by_units`` corrects the bias that makes gene-level ORA on splicing data
+    misleading: a gene contributes as many chances of being a hit as it has tested
+    junctions, so large genes are over-represented among the hits for reasons that are
+    not biological. The number of rows per gene becomes its opportunity measure — see
+    ``weights`` in :func:`over_representation`. Set it to ``False`` for the plain
+    hypergeometric, which is what every ORA tool does and what this did before.
     """
     from .diff import significant
 
@@ -154,4 +233,6 @@ def enrich_differential(
     )
     background = diff_table[chosen].dropna().unique().tolist()
     hits = significant(diff_table, q=q, min_delta=min_delta)[chosen].dropna().unique().tolist()
+    if weight_by_units and "weights" not in kwargs:
+        kwargs["weights"] = diff_table[chosen].dropna().value_counts().to_dict()
     return over_representation(hits, background, gene_sets, **kwargs)

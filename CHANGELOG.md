@@ -101,6 +101,29 @@ All notable changes to this project are documented here. The format is based on
   CHANGELOG agree — they had drifted to 0.5.0, 0.8.1 and 0.8.1 respectively, so
   `splicescope --version` reported a release three versions old.
 
+### Changed (breaking)
+- `events.cassette_psi` is removed; use `events.event_psi`, which keys by `event_id`.
+  `cassette_psi` keyed its rows by the *skipping* junction, so several cassette exons
+  between the same pair of flanking exons collapsed into one test — and since they can
+  move in opposite directions, their ΔΨ cancelled. A worked example with three events at
+  one locus produced a single junction key. Nothing in the pipeline used it; `run` has
+  been on `event_psi` since 0.3.0.
+
+### Added (statistics)
+- `betabinom.estimate_precision_per_unit` and
+  `differential_splicing(dispersion="per_unit_floor")`, which takes the smaller of each
+  unit's own precision and the shared one. One shared dispersion is **not uniformly
+  conservative**, contrary to what the docstring claimed: on a null with half the units at
+  `s = 200` and half at `s = 5`, the shared estimate is 10.7 and the loosely dispersed half
+  runs at a false-positive rate of **0.173** against a nominal 0.05 while the tight half
+  runs at 0.000 — the pooled 0.087 hides both. The floor brings the loose half to 0.090 and
+  the overall rate to 0.045, at a cost of roughly a sixth of the power (0.52 → 0.44 on a
+  homogeneous Ψ 0.30-vs-0.45 contrast). **The default is unchanged**, so no published
+  number moves; `docs/METHODS.md` §5.4 records the trade-off and the tests record the
+  behaviour.
+- More broadly: `predict_consequence` gained `contiguous_downstream`; `Transcript` gained
+  `cds_phase` and `frame_at`; `enrich.normalize_gene_id` is public.
+
 ### Fixed (real data)
 - **Strand-undefined junctions became phantom cryptic calls.** STAR writes strand code 0
   whenever the intron motif does not reveal a strand — routine for non-canonical junctions
@@ -140,6 +163,15 @@ All notable changes to this project are documented here. The format is based on
   phase; `load_transcripts` ignored column 8 entirely. `Transcript.cds_phase` now carries
   it — taken from the first block in *transcription* order, so the minus strand is right —
   and `Transcript.frame_at` applies it wherever frame is inherited.
+- **A PTC in an extension of the final exon was called `ptc_nmd`.** An extension is
+  contiguous with the exon it joins, so there is no junction between them; when that exon
+  is the last one, the stop lies past the final exon-exon junction and NMD cannot be
+  triggered. The old code measured the distance to a junction that does not exist — on the
+  demo genome it reported `ptc_nmd` at a distance of 120 for an event that escapes.
+- **An exon-skipping junction was read as a splice-site shift.** Both its sites are
+  annotated, just not as a pair, so `junction_change` matched one of them and reported the
+  skipped exon *and the intron beyond it* as a single contiguous deletion. Such junctions
+  are now left uninterpreted, which is what they are: a shift has exactly one novel site.
 
 ### Fixed (Nextflow)
 - **The pipeline's real-data mode could not have worked.** One channel was passed for all

@@ -109,9 +109,18 @@ def estimate_precision(
     of freedom instead.
 
     Under the model ``E[r²] = 1 + (n - 1) / (s + 1)`` for Pearson residuals
-    ``r``, so a df-corrected residual sum determines ``s`` in one pass. A single
-    shared ``s`` is a deliberate simplification, and a conservative one: it is
-    dominated by the many low-coverage events rather than by the few loud ones.
+    ``r``, so a df-corrected residual sum determines ``s`` in one pass.
+
+    A single shared ``s`` is a deliberate simplification, and it is **not uniformly
+    conservative**. When dispersion is homogeneous it is well calibrated (simulated at
+    s = 50: estimate 52.3, false-positive rate 0.051 against a nominal 0.05). When
+    dispersion is heterogeneous the shared value sits between the extremes and the test
+    is anti-conservative for everything noisier than it: with half the units at s = 200
+    and half at s = 5 the shared estimate is 10.7, and the loosely dispersed half runs
+    at a **false-positive rate of 0.173** while the tight half runs at 0.000. The overall
+    rate of 0.087 hides both. :func:`estimate_precision_per_unit` and
+    ``differential_splicing(dispersion="per_unit_floor")`` trade power for protection
+    against this; see ``docs/METHODS.md`` §5.4.
 
     ``groups`` must be the same sample masks the test will use. Residuals are
     then taken about each group's own mean: pooling groups that genuinely differ
@@ -158,6 +167,63 @@ def estimate_precision(
     trials_excess = float(np.where(keep, n - 1.0, 0.0).sum())
     s = trials_excess / excess - 1.0
     return float(np.clip(s, min_precision, max_precision))
+
+
+def estimate_precision_per_unit(
+    k: np.ndarray,
+    n: np.ndarray,
+    mask: np.ndarray,
+    groups: list[np.ndarray] | None = None,
+    min_precision: float = 1.0,
+    max_precision: float = 1e5,
+) -> np.ndarray:
+    """The same moment estimator applied to each unit on its own.
+
+    One unit's handful of replicates gives a very noisy estimate, so this is not a
+    replacement for the shared value — it is the input to a floor. A unit that looks
+    *more* dispersed than the shared estimate says is the case the shared value gets
+    wrong, and taking the smaller of the two can only widen the null.
+
+    Units that cannot be estimated return ``max_precision``, which leaves the shared
+    value in charge of them.
+    """
+    blocks = groups if groups else [np.ones(k.shape[1], dtype=bool)]
+
+    mu = np.zeros_like(k)
+    covered = np.zeros_like(mask)
+    n_params = np.zeros(k.shape[0])
+    for block in blocks:
+        block_mask = mask & block[None, :]
+        total = np.where(block_mask, n, 0.0).sum(axis=1)
+        included = np.where(block_mask, k, 0.0).sum(axis=1)
+        fitted = np.zeros_like(total)
+        np.divide(included, total, out=fitted, where=total > 0)
+        mu = np.where(block_mask, fitted[:, None], mu)
+        covered |= block_mask
+        n_params += (total > 0).astype(float)
+
+    mu = np.clip(mu, _EPS, 1.0 - _EPS)
+    variance = n * mu * (1.0 - mu)
+    resid_sq = np.where(
+        covered & (variance > 0), (k - n * mu) ** 2 / np.maximum(variance, _EPS), 0.0
+    )
+
+    pearson = resid_sq.sum(axis=1)
+    n_total = covered.sum(axis=1).astype(float)
+    df = n_total - n_params
+
+    out = np.full(k.shape[0], max_precision)
+    ok = (df > 0) & (pearson > 0) & (n_total > 0)
+    corrected = np.zeros_like(pearson)
+    np.divide(pearson * n_total, df, out=corrected, where=ok)
+    excess = corrected - n_total
+    ok &= excess > 0
+
+    trials_excess = np.where(covered, n - 1.0, 0.0).sum(axis=1)
+    estimate = np.zeros_like(excess)
+    np.divide(trials_excess, excess, out=estimate, where=ok)
+    out = np.where(ok, np.clip(estimate - 1.0, min_precision, max_precision), out)
+    return out
 
 
 def lrt(

@@ -444,3 +444,65 @@ def test_cds_phase_is_taken_from_the_first_block_in_transcription_order(tmp_path
         f"chr1\tsrc\tCDS\t401\t500\t.\t-\t2\t{attrs}\n"
     )
     assert load_transcripts(path)["T1"].cds_phase == 2
+
+
+def test_a_ptc_in_an_extension_of_the_final_exon_escapes_nmd(tmp_path):
+    """An extension is contiguous with the exon it joins — there is no junction between
+    them. When that exon is the last one, the PTC lies past the final exon-exon junction
+    and NMD cannot be triggered, however far it sits from the transcript's end."""
+    from splicescope.consequence import predict_junction_consequence
+
+    tx = make_transcript()  # exons 101-200, 401-500, 701-800; last intron 501-700
+    seq = list("A" * 900)
+    # An acceptor shifted 150 nt earlier extends the final exon to 551-700. The frame
+    # there is 2, so codons are read from offset 1: put the stop at offset 4 (genomic 555).
+    for i in range(550, 700):
+        seq[i] = "GGC"[(i - 550) % 3]
+    seq[554], seq[555], seq[556] = "T", "A", "A"
+    fasta = write_fasta(tmp_path, {"chr1": "".join(seq)})
+
+    with GenomeFasta(fasta) as fa:
+        final = predict_junction_consequence(tx, fa, "chr1", 501, 550)
+        assert final is not None
+        assert final.consequence_class == PTC_ESCAPE
+        assert final.distance_to_last_junction is None
+        assert final.nmd_predicted is False
+
+
+def test_a_ptc_in_an_extension_of_an_internal_exon_can_still_trigger_nmd(tmp_path):
+    """The other half: an internal exon does have a junction after it."""
+    from splicescope.consequence import predict_junction_consequence
+
+    tx = make_transcript()  # first intron 201-400 precedes exon 401-500
+    seq = list("A" * 900)
+    # extension 251-400; frame there is 1, so codons start at offset 2 — stop at offset 5
+    for i in range(250, 400):
+        seq[i] = "GGC"[(i - 250) % 3]
+    seq[255], seq[256], seq[257] = "T", "A", "A"
+    fasta = write_fasta(tmp_path, {"chr1": "".join(seq)})
+
+    with GenomeFasta(fasta) as fa:
+        internal = predict_junction_consequence(tx, fa, "chr1", 201, 250)
+        assert internal.consequence_class == PTC_NMD
+        assert internal.distance_to_last_junction > 50
+
+
+def test_an_exon_skipping_junction_is_not_read_as_a_splice_site_shift():
+    """Both of its sites are annotated, just not as a pair. Interpreting it as a shift
+    reports the skipped exon *and the intron beyond it* as one contiguous deletion."""
+    from splicescope.consequence import junction_change
+
+    tx = Transcript(
+        transcript_id="T1", gene_id="G1", gene_name="G", chrom="chr1", strand="+",
+        exons=[(101, 200), (401, 500), (701, 800), (1001, 1100)],
+        cds=[(101, 200), (401, 500), (701, 800), (1001, 1100)],
+    )
+    assert tx.introns == [(201, 400), (501, 700), (801, 1000)]
+
+    # skips exon 401-500: donor of intron 1, acceptor of intron 2
+    assert junction_change(tx, 201, 700) is None
+    # the annotated intron itself is not a change either
+    assert junction_change(tx, 201, 400) is None
+    # genuine shifts are still interpreted
+    assert junction_change(tx, 201, 350) == ("extension", 351, 400)
+    assert junction_change(tx, 251, 400) == ("extension", 201, 250)

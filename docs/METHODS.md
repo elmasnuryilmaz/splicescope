@@ -116,6 +116,36 @@ Simulation gives well-calibrated null p-values (nominal 0.05 → observed 0.045�
 dispersion levels) and, at 3-vs-3 with ~60× coverage, 94 % of ΔΨ = 0.2 events clearing
 BH `q ≤ 0.05`.
 
+### 5.4 What one shared dispersion costs
+
+The calibration above holds when dispersion is **homogeneous**. It is not uniformly
+conservative, and the aggregate number hides the failure. Simulating a null with half the
+units at `s = 200` and half at `s = 5`:
+
+| units | true `s` | shared estimate | false positives at nominal 0.05 |
+|---|---:|---:|---:|
+| tightly dispersed | 200 | 10.7 | 0.000 |
+| loosely dispersed | 5 | 10.7 | **0.173** |
+| all | — | 10.7 | 0.087 |
+
+The shared value lands between the extremes, so the test is anti-conservative for
+everything noisier than it and very conservative for everything tighter. Only the pooled
+0.087 is visible in a normal run.
+
+`differential_splicing(dispersion="per_unit_floor")` also estimates each unit's own
+precision and uses the smaller of the two. A unit's own estimate from a handful of
+replicates is far too noisy to use directly, but taking the minimum can only *widen* the
+null, so it can only remove false positives:
+
+| | heterogeneous null, loose units | heterogeneous null, all | homogeneous null | power (Ψ 0.30 vs 0.45) |
+|---|---:|---:|---:|---:|
+| `shared` (default) | 0.173 | 0.087 | 0.051 | 0.52 |
+| `per_unit_floor` | 0.090 | 0.045 | 0.037 | 0.44 |
+
+That is a real trade — roughly a sixth of the power — so the default is unchanged and the
+option is there for data where dispersion is expected to vary widely. A per-unit estimate
+with proper empirical-Bayes shrinkage would dominate both; it is not implemented.
+
 - **Effect size:** `ΔΨ = Ψ̂(B) − Ψ̂(A)`, the fitted group means.
 - **Multiple testing:** **Benjamini–Hochberg** FDR across all tested units, with the
   standard monotonicity enforcement.
@@ -214,6 +244,20 @@ hits are the genes of significant units. Gene sets are supplied by the user (GMT
 `io.read_gmt`) — none are bundled, because meaningful enrichment requires real
 annotations, not synthetic ones.
 
+Identifiers are compared through `normalize_gene_id`, which drops a trailing `.<digits>`
+and folds case, because a GTF gives versioned accessions (`ENSG00000141510.16`) while
+gene-set files give symbols or unversioned accessions. Whichever of `gene_id`/`gene_name`
+overlaps the sets more is used.
+
+**A bias worth knowing about.** The hypergeometric null treats every gene as one equally
+likely draw, but genes contribute wildly different numbers of *tested junctions* — a long,
+many-exon gene has far more chances to contain a significant unit than a two-exon one. So
+junction-rich genes are over-represented among the hits for reasons that have nothing to
+do with the biology, exactly as gene length biases GO analysis of RNA-seq (the problem
+`goseq` exists to solve). A length- or count-weighted null is not implemented here; treat
+gene-level ORA on splicing hits as a hypothesis generator, and check whether an enriched
+set is simply a set of large genes.
+
 ## 8. Simulation model
 
 To keep the toolkit self-contained and testable, `simulate` generates a small annotated
@@ -251,6 +295,30 @@ When the event shifts the frame without carrying a stop itself, the retained dow
 exons are assembled and the in-frame scan continues there, because that is where the
 first premature stop then lies. The same applies to truncations, which cannot contain a
 stop inside the removed interval by construction.
+
+Three boundaries decide whether a stop found that way is *premature*:
+
+- **The transcript's own stop is not a PTC.** A truncation that removes whole codons
+  leaves the downstream frame untouched, so the first in-frame stop it reaches is the
+  annotated one. Anything at or beyond the annotated stop is reported as
+  `exon_truncation`, not as a termination event.
+- **An extension has no junction after it.** It is contiguous with the exon it joins, so
+  when that exon is the last one the PTC lies past the final exon–exon junction and NMD
+  cannot be triggered, however far it sits from the transcript's end.
+- **Both sites annotated means an exon skip, not a shift.** Such a junction is left
+  uninterpreted rather than read as one contiguous deletion spanning the skipped exon
+  *and* the intron beyond it.
+
+The reading frame itself comes from `Transcript.frame_at`, which applies the GTF phase of
+the first coding block — non-zero for GENCODE's 5'-incomplete `cds_start_NF` transcripts,
+which would otherwise be translated out of frame from their first base.
+
+**One caveat on splice-site shifts.** The extension a junction implies is whatever lies
+between the novel site and the annotated one, which for a deep intronic site can be a
+kilobase or more. Nothing bounds it, because nothing in the junction bounds it — but the
+longer the implied sequence, the more certainly it contains a stop for the arithmetic
+reason below rather than for a biological one. `insert_length` is reported so such events
+can be filtered or read with appropriate suspicion.
 
 **This is interpretation, not evidence of reality.** A random 128 nt interval read in a
 fixed frame contains a stop codon with probability `1 − (61/64)^42 ≈ 0.87`, so most

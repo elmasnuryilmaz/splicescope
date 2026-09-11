@@ -4,7 +4,6 @@ import pandas as pd
 from splicescope.annotate import annotate_junctions
 from splicescope.diff import differential_splicing, significant
 from splicescope.events import (
-    cassette_psi,
     detect_alt_ss_events,
     detect_cassette_events,
     detect_events,
@@ -41,9 +40,9 @@ def test_cassette_psi_formula():
         columns=["chrom", "start", "end", "strand", "count", "sample"],
     )
     events = detect_cassette_events(obs)
-    psi = cassette_psi(obs, events, min_reads=1)
+    psi = event_psi(obs, events, min_reads=1)
     # inclusion = (60+60)/2 = 60; PSI = 60 / (60+20) = 0.75
-    assert np.isclose(psi.loc[0, "psi_cassette"], 0.75)
+    assert np.isclose(psi.loc[0, "psi"], 0.75)
 
 
 def test_cassette_events_on_simulation():
@@ -52,11 +51,11 @@ def test_cassette_events_on_simulation():
     events = detect_cassette_events(annotated)
     assert not events.empty
 
-    psi = cassette_psi(annotated, events, min_reads=5)
-    vals = psi["psi_cassette"].dropna()
+    psi = event_psi(annotated, events, min_reads=5)
+    vals = psi["psi"].dropna()
     assert ((vals >= 0) & (vals <= 1)).all()
 
-    diff = differential_splicing(psi, ds.groups, value="psi_cassette")
+    diff = differential_splicing(psi, ds.groups, value="psi", key=["event_id"])
     # cryptic exons are up-regulated in B, so some events are differentially included
     assert not significant(diff, q=0.1, min_delta=0.05).empty
 
@@ -276,3 +275,36 @@ def test_a_cassette_alone_is_not_also_reported_as_an_alt_splice_site_event():
 
     df = pd.DataFrame([j(1000, 1100), j(1201, 2000), j(1000, 2000)])
     assert set(detect_events(df)["event_type"]) == {"SE"}
+
+
+def test_cassette_events_sharing_a_skip_junction_stay_separate():
+    """Several cassette exons can sit between the same pair of flanking exons. Keying
+    their PSI by the shared skipping junction merged them into one test, where opposite
+    changes cancel; event_psi keys by event_id, so each is tested on its own."""
+
+    def j(start, end, sample, count):
+        return dict(chrom="chr1", start=start, end=end, strand="+", sample=sample, count=count)
+
+    rows = []
+    for sample in ("A1", "A2", "B1", "B2"):
+        up = sample.startswith("B")
+        rows += [
+            j(1000, 2000, sample, 100),                  # the shared skipping junction
+            j(1000, 1100, sample, 90 if up else 10),     # exon X, up in B
+            j(1201, 2000, sample, 90 if up else 10),
+            j(1000, 1500, sample, 10 if up else 90),     # exon Y, down in B
+            j(1601, 2000, sample, 10 if up else 90),
+        ]
+    observed = pd.DataFrame(rows)
+    events = detect_cassette_events(observed)
+    assert len(events) > 1, "this locus must yield several cassette events"
+
+    psi = event_psi(observed, events, min_reads=1)
+    assert psi["event_id"].nunique() == len(events)
+
+    groups = {"A1": "A", "A2": "A", "B1": "B", "B2": "B"}
+    diff = differential_splicing(psi, groups, value="psi", key=["event_id"])
+    assert len(diff) == len(events)
+    # the exons move in opposite directions; merged, they would cancel to nothing
+    assert diff["delta_psi"].max() > 0.2
+    assert diff["delta_psi"].min() < -0.2

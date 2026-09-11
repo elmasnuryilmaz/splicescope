@@ -25,7 +25,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-from .betabinom import estimate_precision, lrt
+from .betabinom import estimate_precision, estimate_precision_per_unit, lrt
 
 #: Count column pairs tried in order when ``inc_col``/``total_col`` are not given.
 _COUNT_COLUMNS = {
@@ -96,6 +96,7 @@ def _betabinom_test(
     b_name: str,
     groups: dict[str, str],
     min_samples: int,
+    dispersion: str = "shared",
 ) -> pd.DataFrame:
     inc_col, total_col = counts
     samples = sorted(df["sample"].unique())
@@ -121,7 +122,12 @@ def _betabinom_test(
     k, n, valid = k[keep], n[keep], valid[keep]
 
     precision = estimate_precision(k, n, valid, groups=[is_a, is_b])
-    mu_a, mu_b, statistic, pvalue = lrt(k, n, valid, is_a, is_b, precision)
+    if dispersion == "per_unit_floor":
+        per_unit = estimate_precision_per_unit(k, n, valid, groups=[is_a, is_b])
+        precision = np.minimum(precision, per_unit)
+        mu_a, mu_b, statistic, pvalue = lrt(k, n, valid, is_a, is_b, precision[:, None])
+    else:
+        mu_a, mu_b, statistic, pvalue = lrt(k, n, valid, is_a, is_b, precision)
 
     frame = index[keep].to_frame(index=False)[key]
     frame[f"mean_{a_name}"] = mu_a
@@ -186,6 +192,7 @@ def differential_splicing(
     test: str = "auto",
     inc_col: str | None = None,
     total_col: str | None = None,
+    dispersion: str = "shared",
 ) -> pd.DataFrame:
     """Test each junction (or event) for differential Ψ between two conditions.
 
@@ -203,6 +210,14 @@ def differential_splicing(
         ``"betabinom"`` or ``"ranksum"``.
     inc_col, total_col : count columns to model; inferred from ``value`` when
         omitted.
+    dispersion : ``"shared"`` (default) uses one precision for every unit;
+        ``"per_unit_floor"`` additionally estimates each unit's own precision and
+        takes the smaller of the two, which can only widen the null. Use it when
+        dispersion is likely heterogeneous — the shared value is anti-conservative
+        for anything noisier than itself. It costs power: on simulated homogeneous
+        data (Ψ 0.30 vs 0.45, 3 vs 3, 60 reads) power falls from 0.52 to 0.44, while
+        on heterogeneous null data the false-positive rate of the loosely dispersed
+        units falls from 0.173 to 0.090 and the overall rate from 0.087 to 0.045.
 
     Returns one row per unit, sorted by q-value.
     """
@@ -212,6 +227,8 @@ def differential_splicing(
     a_name, b_name = conditions
     if test not in ("auto", "betabinom", "ranksum"):
         raise ValueError(f"unknown test: {test!r}")
+    if dispersion not in ("shared", "per_unit_floor"):
+        raise ValueError(f"unknown dispersion: {dispersion!r}")
 
     df = psi_df.copy()
     df["condition"] = df["sample"].map(groups)
@@ -232,7 +249,7 @@ def differential_splicing(
 
     if use_counts:
         res = _betabinom_test(
-            df, key, extra, value, counts, a_name, b_name, groups, min_samples
+            df, key, extra, value, counts, a_name, b_name, groups, min_samples, dispersion
         )
     else:
         res = _ranksum_test(df, key, extra, value, a_name, b_name, min_samples)

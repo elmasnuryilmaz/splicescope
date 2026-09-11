@@ -101,57 +101,6 @@ def detect_cassette_events(annotated: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(events)
 
 
-def cassette_psi(
-    annotated: pd.DataFrame, events: pd.DataFrame, min_reads: int = 10
-) -> pd.DataFrame:
-    """Compute per-sample cassette-exon PSI for each detected event.
-
-    Returns a long table keyed by the *skipping* junction coordinates (so it can
-    be fed straight into :func:`splicescope.diff.differential_splicing` with
-    ``value="psi_cassette"``), plus ``event_id``, inclusion/skip read counts and
-    ``gene_id``.
-    """
-    if events.empty:
-        return pd.DataFrame(
-            columns=[
-                "chrom", "start", "end", "strand", "sample",
-                "psi_cassette", "inc_reads", "skip_reads", "event_id", "gene_id",
-            ]
-        )
-
-    counts = (
-        annotated.groupby(["chrom", "start", "end", "strand", "sample"], observed=True)["count"]
-        .sum()
-        .to_dict()
-    )
-    samples = sorted(annotated["sample"].unique())
-
-    rows = []
-    for ev in events.itertuples(index=False):
-        for sample in samples:
-            i1 = counts.get((ev.chrom, ev.inc1_start, ev.inc1_end, ev.strand, sample), 0)
-            i2 = counts.get((ev.chrom, ev.inc2_start, ev.inc2_end, ev.strand, sample), 0)
-            skip = counts.get((ev.chrom, ev.skip_start, ev.skip_end, ev.strand, sample), 0)
-            inclusion = (i1 + i2) / 2.0
-            denom = inclusion + skip
-            psi = inclusion / denom if denom >= min_reads else float("nan")
-            rows.append(
-                {
-                    "chrom": ev.chrom,
-                    "start": ev.skip_start,
-                    "end": ev.skip_end,
-                    "strand": ev.strand,
-                    "sample": sample,
-                    "psi_cassette": psi,
-                    "inc_reads": inclusion,
-                    "skip_reads": float(skip),
-                    "event_id": ev.event_id,
-                    "gene_id": ev.gene_id,
-                }
-            )
-    return pd.DataFrame(rows)
-
-
 def _with_sites(annotated: pd.DataFrame) -> pd.DataFrame:
     df = annotated.copy()
     da = [

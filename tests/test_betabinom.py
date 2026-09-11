@@ -89,3 +89,84 @@ def test_real_difference_clears_bh_where_a_rank_test_cannot():
     # The whole point: p-values far below the 0.1 floor of a 3-vs-3 rank test.
     assert pvalue.min() < bb.min_achievable_rank_pvalue(3, 3) / 100
     assert (benjamini_hochberg(pvalue) <= 0.05).sum() > 0
+
+
+def _beta_binomial_null(s_values, mu=0.3, depth=60, n_per_group=3, seed=0):
+    """Counts with no difference between groups, at a chosen precision per unit."""
+    rng = np.random.default_rng(seed)
+    n_samples = 2 * n_per_group
+    n = np.full((len(s_values), n_samples), float(depth))
+    k = np.empty_like(n)
+    for i, s in enumerate(s_values):
+        p = rng.beta(mu * s, (1 - mu) * s, size=n_samples)
+        k[i] = rng.binomial(depth, p)
+    group_a = np.array([True] * n_per_group + [False] * n_per_group)
+    return k, n, np.ones_like(n, dtype=bool), group_a
+
+
+def test_the_shared_precision_is_well_calibrated_when_dispersion_is_homogeneous():
+    from splicescope.betabinom import estimate_precision, lrt
+
+    k, n, mask, group_a = _beta_binomial_null(np.full(2000, 50.0), seed=0)
+    s = estimate_precision(k, n, mask, groups=[group_a, ~group_a])
+    assert 40 < s < 65, f"expected to recover s near 50, got {s}"
+    _, _, _, p = lrt(k, n, mask, group_a, ~group_a, s)
+    assert 0.03 < (p <= 0.05).mean() < 0.075
+
+
+def test_the_shared_precision_is_anti_conservative_when_dispersion_is_heterogeneous():
+    """Recorded, not endorsed: one precision for every unit is not uniformly
+    conservative, and the overall rate hides it."""
+    from splicescope.betabinom import estimate_precision, lrt
+
+    s_true = np.array([200.0] * 1000 + [5.0] * 1000)
+    k, n, mask, group_a = _beta_binomial_null(s_true, seed=0)
+    s = estimate_precision(k, n, mask, groups=[group_a, ~group_a])
+    _, _, _, p = lrt(k, n, mask, group_a, ~group_a, s)
+
+    loose = s_true == 5.0
+    assert (p[loose] <= 0.05).mean() > 0.12, "the loosely dispersed half should over-call"
+    assert (p[~loose] <= 0.05).mean() < 0.01, "the tight half should under-call"
+
+
+def test_the_per_unit_floor_never_raises_the_precision():
+    """It can only widen the null, so it can only remove false positives."""
+    from splicescope.betabinom import estimate_precision, estimate_precision_per_unit
+
+    s_true = np.array([200.0] * 300 + [5.0] * 300)
+    k, n, mask, group_a = _beta_binomial_null(s_true, seed=1)
+    shared = estimate_precision(k, n, mask, groups=[group_a, ~group_a])
+    per_unit = estimate_precision_per_unit(k, n, mask, groups=[group_a, ~group_a])
+    assert (np.minimum(shared, per_unit) <= shared + 1e-9).all()
+
+
+def test_the_per_unit_floor_reduces_the_heterogeneous_false_positive_rate():
+    from splicescope.betabinom import estimate_precision, estimate_precision_per_unit, lrt
+
+    s_true = np.array([200.0] * 1000 + [5.0] * 1000)
+    k, n, mask, group_a = _beta_binomial_null(s_true, seed=0)
+    shared = estimate_precision(k, n, mask, groups=[group_a, ~group_a])
+    per_unit = estimate_precision_per_unit(k, n, mask, groups=[group_a, ~group_a])
+    floored = np.minimum(shared, per_unit)[:, None]
+
+    _, _, _, p_shared = lrt(k, n, mask, group_a, ~group_a, shared)
+    _, _, _, p_floor = lrt(k, n, mask, group_a, ~group_a, floored)
+
+    loose = s_true == 5.0
+    assert (p_floor[loose] <= 0.05).mean() < (p_shared[loose] <= 0.05).mean()
+    assert (p_floor <= 0.05).mean() < 0.06
+
+
+def test_per_unit_precision_matches_the_shared_estimator_applied_row_by_row():
+    from splicescope.betabinom import estimate_precision, estimate_precision_per_unit
+
+    k, n, mask, group_a = _beta_binomial_null(np.full(40, 30.0), seed=2)
+    blocks = [group_a, ~group_a]
+    vectorised = estimate_precision_per_unit(k, n, mask, groups=blocks)
+    row_by_row = np.array(
+        [
+            estimate_precision(k[i : i + 1], n[i : i + 1], mask[i : i + 1], groups=blocks)
+            for i in range(k.shape[0])
+        ]
+    )
+    assert np.allclose(vectorised, row_by_row)

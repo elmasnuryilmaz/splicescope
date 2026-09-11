@@ -54,8 +54,17 @@ the outputs are unchanged apart from row order.
 > input, and that gap is exactly the sub-threshold units the filter should have removed.
 > The qualitative conclusions do not rest on the exact values — a rank test cannot clear
 > BH at 3 vs 3, the count model can, and the classifier ranks confidently replicating
-> events worse than the statistic does. The NMD-sensitivity sections use external labels
-> and the unchanged consequence layer, and are unaffected.
+> events worse than the statistic does.
+>
+> The consequence layer changed in 0.9.0 as well, so the NMD-sensitivity numbers below
+> need re-measuring too, though their labels are external and unaffected. Three
+> corrections move class assignments: an in-frame truncation is no longer called a PTC
+> when the stop it reaches is the transcript's own; a PTC in an extension of the **final**
+> exon now escapes NMD, because an extension is contiguous with the exon it joins and so
+> there is no junction after it; and exon-skipping junctions are no longer interpreted as
+> splice-site shifts. All three move events *out* of `ptc_nmd`, so the contrast the
+> SMG1i analysis reports is expected to sharpen rather than weaken — but that is a
+> prediction, not a measurement, until the run is repeated.
 
 ### The rank test could not work
 

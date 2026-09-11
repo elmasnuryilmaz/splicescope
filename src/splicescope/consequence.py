@@ -373,8 +373,19 @@ def junction_change(tx: Transcript, start: int, end: int) -> tuple[str, int, int
     Returns ``("extension" | "truncation", first_base, last_base)``, or ``None``
     when neither site matches the annotation (an unanchored junction, which the
     annotation cannot interpret).
+
+    ``None`` is also returned when *both* sites are annotated splice sites of this
+    transcript but not as a pair: that is an exon skip, not a shifted splice site, and
+    reading it as one reports the skipped exon *and the intron beyond it* as a single
+    contiguous deletion.
     """
-    for istart, iend in tx.introns:
+    introns = tx.introns
+    if (start, end) not in introns:
+        starts = {i for i, _ in introns}
+        ends = {j for _, j in introns}
+        if start in starts and end in ends:
+            return None
+    for istart, iend in introns:
         if istart == start and iend != end:
             # The 3' end of the intron moved.
             if end < iend:
@@ -425,7 +436,16 @@ def predict_junction_consequence(
         return None
     kind, cstart, cend = change
     if kind == "extension":
-        return predict_consequence(tx, genome, chrom, cstart, cend)
+        # Which neighbour did the sequence join? On the plus strand the exon that starts
+        # just after it is the one transcribed next; on the minus strand it is the exon
+        # that ends just before it. Only then is the pair contiguous in the mRNA.
+        if tx.strand == "+":
+            contiguous = any(estart == cend + 1 for estart, _ in tx.exons)
+        else:
+            contiguous = any(eend == cstart - 1 for _, eend in tx.exons)
+        return predict_consequence(
+            tx, genome, chrom, cstart, cend, contiguous_downstream=contiguous
+        )
 
     length = cend - cstart + 1
     bounds = _cds_bounds(tx)
@@ -539,8 +559,14 @@ def predict_consequence(
     chrom: str,
     start: int,
     end: int,
+    contiguous_downstream: bool = False,
 ) -> Consequence:
-    """Predict the effect of inserting ``chrom:start-end`` into ``tx``."""
+    """Predict the effect of inserting ``chrom:start-end`` into ``tx``.
+
+    ``contiguous_downstream`` says the sequence is joined to the following exon without
+    an intervening junction, which is true of an exon *extension* but not of a cassette
+    exon. It decides whether that exon can anchor the 50-nucleotide rule.
+    """
     insert_length = end - start + 1
     bounds = _cds_bounds(tx)
     base = dict(
@@ -590,11 +616,20 @@ def predict_consequence(
 
     base["ptc_offset"] = ptc_offset
     downstream = _downstream_exon_lengths(tx, start, end)
+    # A cassette exon is followed by a junction, so its own downstream exons supply the
+    # last one. An *extension* is contiguous with the next exon — no junction there — so
+    # if that exon is the final one, the PTC lies past the last junction and NMD cannot
+    # be triggered, however far it sits from the transcript's end.
+    has_junction = len(downstream) > (1 if contiguous_downstream else 0)
+    if not has_junction:
+        base["distance_to_last_junction"] = None
+        base["nmd_predicted"] = False
+        return Consequence(**base, consequence_class=PTC_ESCAPE)
     # Distance from the PTC to the final exon-exon junction of the transcript:
     # what is left of the cryptic exon, plus every downstream exon but the last.
     distance = (insert_length - ptc_offset - 3) + sum(downstream[:-1])
     base["distance_to_last_junction"] = distance
-    nmd = bool(downstream) and distance > NMD_DISTANCE_RULE
+    nmd = distance > NMD_DISTANCE_RULE
     base["nmd_predicted"] = nmd
     return Consequence(**base, consequence_class=PTC_NMD if nmd else PTC_ESCAPE)
 

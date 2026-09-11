@@ -270,3 +270,26 @@ def test_consequence_command_rejects_a_table_it_cannot_interpret(demo, tmp_path)
         ]
     )
     assert rc == 2
+
+
+def test_consequence_command_handles_a_table_with_no_cassette_exons(demo, tmp_path):
+    """Filtering an event table to SE can legitimately leave nothing; that used to raise
+    KeyError('consequence_class') rather than writing an empty result."""
+    src = tmp_path / "alt_only.tsv"
+    pd.DataFrame(
+        [{"chrom": "chr1", "strand": "+", "exon_start": 1, "exon_end": 2, "event_type": "A3SS"}]
+    ).to_csv(src, sep="\t", index=False)
+    out = tmp_path / "empty.tsv"
+
+    rc = main(
+        [
+            "consequence",
+            "--events", str(src),
+            "--gtf", str(demo / "annotation.gtf"),
+            "--genome", str(demo / "genome.fa"),
+            "--out", str(out),
+        ]
+    )
+    assert rc == 0
+    assert out.exists()
+    assert pd.read_csv(out, sep="\t").empty

@@ -101,6 +101,24 @@ All notable changes to this project are documented here. The format is based on
   CHANGELOG agree — they had drifted to 0.5.0, 0.8.1 and 0.8.1 respectively, so
   `splicescope --version` reported a release three versions old.
 
+### Fixed (real data)
+- **Strand-undefined junctions became phantom cryptic calls.** STAR writes strand code 0
+  whenever the intron motif does not reveal a strand — routine for non-canonical junctions
+  — and such a junction can never equal a stranded annotation. It was therefore classified
+  `cryptic` however ordinary it was, lost its `gene_id`, and, being the only junction at
+  its own `(chrom, position, ".")` site, was handed **Ψ ≡ 1.0 in every sample**: a row in
+  the differential table that can never show a difference, inflating the BH denominator and
+  the headline `cryptic` count alike. `resolve_unstranded` now places such a junction on
+  the strand its annotation implies, by exact intron or by either splice site. Junctions
+  the annotation cannot place keep `"."` — the strand really is unknown.
+- **Alternative-splice-site events were deleted for sharing an anchor with a cassette.**
+  Cassette and MXE junctions are excluded from A5SS/A3SS detection so the same signal is
+  not told twice, but they were dropped before the alternatives at a site were counted, so
+  a site with a genuine third alternative fell to one and its event vanished. A site is now
+  skipped only when *every* junction at it is already explained.
+- `splicescope consequence` raised `KeyError: 'consequence_class'` when filtering an event
+  table to cassette exons left nothing; it now writes an empty result and exits 0.
+
 ### Fixed (statistics and biology)
 - **Samples in neither group inflated the likelihood-ratio test without bound.** `lrt`
   fitted the null over every valid sample but the alternative over the two groups only,

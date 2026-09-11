@@ -1,4 +1,5 @@
 import pandas as pd
+import pytest
 
 from splicescope.annotate import annotate_junctions, classify_one
 from splicescope.io import donor_acceptor
@@ -50,3 +51,45 @@ def test_annotate_junctions_adds_columns():
     assert list(out["sclass"]) == ["annotated", "novel_acceptor"]
     assert out.loc[0, "gene_id"] == "g0"
     assert out.loc[0, "is_novel"] is False or out.loc[0, "is_novel"] == False  # noqa: E712
+
+
+def test_strand_undefined_junctions_are_placed_against_the_annotation():
+    """STAR writes strand code 0 whenever the intron motif does not reveal a strand.
+    Such a junction can never equal a stranded annotation, so it was classified cryptic
+    however ordinary it was, lost its gene, and — alone at its own (chrom, pos, '.')
+    site — was handed Ψ = 1.0 in every sample."""
+    from splicescope.quantify import compute_psi
+
+    known = pd.DataFrame(
+        [
+            dict(chrom="chr1", start=1000, end=2000, strand="+", gene_id="G1"),
+            dict(chrom="chr1", start=1000, end=3000, strand="+", gene_id="G1"),
+        ]
+    )
+    observed = pd.DataFrame(
+        [
+            dict(chrom="chr1", start=1000, end=2000, strand=".", sample="s1", count=40),
+            dict(chrom="chr1", start=1000, end=2500, strand=".", sample="s1", count=10),
+            dict(chrom="chr1", start=7000, end=7500, strand=".", sample="s1", count=5),
+        ]
+    )
+    out = annotate_junctions(observed, known)
+
+    # the exact intron, and a junction sharing its donor, are both placed on '+'
+    assert list(out["strand"]) == ["+", "+", "."]
+    assert list(out["sclass"]) == ["annotated", "novel_acceptor", "cryptic"]
+    assert list(out["gene_id"])[:2] == ["G1", "G1"]
+
+    # and they now share a donor, so Ψ is a real fraction rather than 1.0 each
+    psi = compute_psi(out, min_reads=5)
+    assert psi.loc[0, "psi_donor"] == pytest.approx(0.8)
+    assert psi.loc[1, "psi_donor"] == pytest.approx(0.2)
+
+
+def test_an_unplaceable_junction_keeps_its_undefined_strand():
+    """Guessing a strand the annotation cannot support would be worse than saying so."""
+    known = pd.DataFrame([dict(chrom="chr1", start=1000, end=2000, strand="+", gene_id="G1")])
+    observed = pd.DataFrame(
+        [dict(chrom="chr2", start=500, end=900, strand=".", sample="s1", count=3)]
+    )
+    assert annotate_junctions(observed, known).loc[0, "strand"] == "."

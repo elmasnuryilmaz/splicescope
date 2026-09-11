@@ -236,3 +236,43 @@ def test_max_exon_is_reachable_through_detect_events():
     assert detect_events(df, types=("MXE",)).empty
     widened = detect_events(df, types=("MXE",), max_exon=2000)
     assert len(widened) == 1
+
+
+def test_an_alt_splice_site_event_survives_sharing_an_anchor_with_a_cassette():
+    """Cassette junctions are excluded from alt-splice-site detection so the same signal
+    is not reported twice — but dropping them outright took the site's other alternatives
+    with them, deleting genuine A5SS/A3SS events."""
+    from splicescope.events import detect_events
+
+    def j(start, end):
+        return dict(
+            chrom="chr1", start=start, end=end, strand="+",
+            sample="s1", count=50, gene_id="g1",
+        )
+
+    df = pd.DataFrame(
+        [
+            j(1000, 1100),   # cassette inclusion 1
+            j(1201, 2000),   # cassette inclusion 2
+            j(1000, 2000),   # cassette skip
+            j(1000, 1700),   # a third acceptor at the same donor: a real A3SS alternative
+        ]
+    )
+    types = set(detect_events(df)["event_type"])
+    assert "SE" in types
+    assert "A3SS" in types, "the extra acceptor at donor 1000 is a genuine event"
+
+
+def test_a_cassette_alone_is_not_also_reported_as_an_alt_splice_site_event():
+    """The other half of the rule: a site explained entirely by a cassette exon must
+    not be told twice."""
+    from splicescope.events import detect_events
+
+    def j(start, end):
+        return dict(
+            chrom="chr1", start=start, end=end, strand="+",
+            sample="s1", count=50, gene_id="g1",
+        )
+
+    df = pd.DataFrame([j(1000, 1100), j(1201, 2000), j(1000, 2000)])
+    assert set(detect_events(df)["event_type"]) == {"SE"}

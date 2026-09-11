@@ -306,9 +306,12 @@ def _consequence_table(events, gtf: str, genome: str, mode: str = "exon"):
 
 def _write_consequence(table, out_path, label: str) -> None:
     table.to_csv(out_path, sep="\t", index=False)
-    counts = table["consequence_class"].value_counts().to_dict()
     print(f"[consequence] {len(table)} {label} -> {out_path}")
-    print(f"[consequence] {counts}")
+    if "consequence_class" in table.columns and not table.empty:
+        print(f"[consequence] {table['consequence_class'].value_counts().to_dict()}")
+    else:
+        # nothing was predicted: an SE filter that matched no rows, or an empty input
+        print(f"[consequence] no {label} to interpret")
 
 
 def _cmd_consequence(args: argparse.Namespace) -> int:

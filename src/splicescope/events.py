@@ -258,9 +258,12 @@ def detect_alt_ss_events(
     variable site sits closest to the shared site (the longer exon), following the
     rMATS convention. One event is emitted per shared site with ≥2 alternatives.
 
-    ``exclude`` is a set of ``(chrom, start, end, strand)`` junctions to ignore —
-    used to keep cassette-exon inclusion junctions from being re-reported as
-    alt-splice-site events.
+    ``exclude`` is a set of ``(chrom, start, end, strand)`` junctions already explained
+    by a cassette or MXE event. A site whose junctions are *all* explained that way is
+    skipped, since reporting it here would be the same signal told twice. Excluded
+    junctions still count towards the alternatives at a site they share with a junction
+    that is not explained: dropping them outright deleted genuine alternative-splice-site
+    events whose only fault was sharing an anchor with a cassette exon.
     """
     if kind not in ("A5SS", "A3SS"):
         raise ValueError("kind must be 'A5SS' or 'A3SS'")
@@ -270,13 +273,13 @@ def detect_alt_ss_events(
     uniq = _with_sites(_unique_junctions(annotated))
     groups: dict[tuple, list] = defaultdict(list)
     for row in uniq.itertuples(index=False):
-        if (row.chrom, row.start, row.end, row.strand) in exclude:
-            continue
         groups[(row.chrom, getattr(row, shared), row.strand)].append(row)
 
     events = []
     for (chrom, site, strand), members in groups.items():
         if len({getattr(m, variable) for m in members}) < 2:
+            continue
+        if all((m.chrom, m.start, m.end, m.strand) in exclude for m in members):
             continue
         incl = min(members, key=lambda m: abs(getattr(m, variable) - site))
         events.append(

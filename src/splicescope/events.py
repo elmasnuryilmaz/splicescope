@@ -30,6 +30,7 @@ by rMATS-style methods:
 
 from __future__ import annotations
 
+import warnings
 from bisect import bisect_left, bisect_right
 from collections import defaultdict
 
@@ -112,8 +113,30 @@ def _with_sites(annotated: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _junction_support(annotated: pd.DataFrame) -> dict:
+    """Total reads per junction across samples, for ranking candidate exons."""
+    if "count" not in annotated.columns:
+        return {}
+    totals = annotated.groupby(["chrom", "start", "end", "strand"], observed=True)["count"].sum()
+    return totals.to_dict()
+
+
+def _support(candidate: tuple, reads: dict) -> float:
+    """A candidate exon is only as well supported as its weaker flanking junction."""
+    if not reads:
+        return 0.0
+    j5, j3 = candidate[2], candidate[3]
+    return min(
+        reads.get((j5.chrom, j5.start, j5.end, j5.strand), 0),
+        reads.get((j3.chrom, j3.start, j3.end, j3.strand), 0),
+    )
+
+
 def detect_mxe_events(
-    annotated: pd.DataFrame, max_exon: int = 1000, exclude: set | None = None
+    annotated: pd.DataFrame,
+    max_exon: int = 1000,
+    exclude: set | None = None,
+    max_candidates: int = 50,
 ) -> pd.DataFrame:
     """Detect mutually-exclusive-exon (MXE) events.
 
@@ -125,8 +148,14 @@ def detect_mxe_events(
         Ψ = incl(A) / (incl(A) + incl(B))
 
     where ``incl(X) = (count(X_5' junction) + count(X_3' junction)) / 2``.
+
+    ``max_candidates`` bounds how many distinct candidate exons one (donor, acceptor)
+    anchor may hold before it is treated as noise and skipped with a warning; pair
+    enumeration is quadratic in that number and the candidates are themselves every
+    junction combination at the anchor.
     """
     exclude = exclude or set()
+    reads = _junction_support(annotated)
     uniq = _unique_junctions(annotated)
     gene_of = {
         (r.chrom, r.start, r.end, r.strand): getattr(r, "gene_id", None)
@@ -138,7 +167,7 @@ def detect_mxe_events(
             continue
         by_cs[(r.chrom, r.strand)].append(r)
 
-    events, seen = [], set()
+    events, seen, crowded = [], set(), []
     for (chrom, strand), js in by_cs.items():
         # every (exon between donor s and acceptor e), grouped by that (s, e) context.
         # A candidate exon has length in [1, max_exon], so for a given upstream
@@ -157,11 +186,38 @@ def detect_mxe_events(
         for (s, e), plist in paths.items():
             if len(plist) < 2:
                 continue
-            plist.sort(key=lambda p: (p[0], p[1]))
+            # One candidate exon per interval: the same exon reached by different
+            # junction combinations is still one exon. Keep the best-supported reading.
+            by_interval: dict[tuple, tuple] = {}
+            for cand in plist:
+                key_iv = (cand[0], cand[1])
+                if key_iv not in by_interval or _support(cand, reads) > _support(
+                    by_interval[key_iv], reads
+                ):
+                    by_interval[key_iv] = cand
+            plist = list(by_interval.values())
+
             # Every non-overlapping pair is an MXE candidate. Stopping at the first one
             # would not merely under-report tandem clusters: the survivor would be the
             # genomically leftmost pair rather than the best-supported one, so a noise
             # junction sitting to the left could displace the real event.
+            #
+            # Every (upstream, downstream) junction combination at this anchor is a
+            # candidate, so `n` real exons arrive with about `n**2` of them: the real
+            # ones plus every span from one exon's start to a later exon's end. Pairing
+            # all of those grew as `n**4` — 80 exons produced 1.68 million rows in 5.9 s.
+            #
+            # Geometry cannot separate the spans from the exons: a noise junction sharing
+            # the anchor's donor produces a candidate indistinguishable in shape from a
+            # real one, and every structural rule tried here deleted 15-22% of the
+            # injected events along with the spans. Read support can. An exon must be
+            # supported by *both* of its junctions, so rank candidates by the weaker of
+            # the two and keep the best `max_candidates`. Truncation is reported.
+            if len(plist) > max_candidates:
+                plist.sort(key=lambda c: _support(c, reads), reverse=True)
+                crowded.append((chrom, strand, s, e, len(plist)))
+                plist = plist[:max_candidates]
+            plist.sort(key=lambda p: (p[0], p[1]))
             for i in range(len(plist)):
                 for k in range(i + 1, len(plist)):
                     a, b = plist[i], plist[k]
@@ -194,6 +250,17 @@ def detect_mxe_events(
                                 "b_j2_end": b[3].end,
                             }
                         )
+
+    if crowded:
+        worst = max(crowded, key=lambda c: c[4])
+        warnings.warn(
+            f"{len(crowded)} donor/acceptor anchor(s) held more than {max_candidates} "
+            f"candidate exons; the busiest had {worst[4]} at "
+            f"{worst[0]}:{worst[2]}-{worst[3]}:{worst[1]}. Pair enumeration is quadratic "
+            "in that number, so only the best-supported candidates were kept at those "
+            "anchors. Raise max_candidates to widen them.",
+            stacklevel=2,
+        )
     return pd.DataFrame(events)
 
 
@@ -252,14 +319,16 @@ def detect_events(
     annotated: pd.DataFrame,
     types: tuple[str, ...] = EVENT_TYPES,
     max_exon: int = 1000,
+    max_candidates: int = 50,
 ) -> pd.DataFrame:
     """Detect all requested event types and return them in one typed table.
 
     Cassette (SE) events are detected first; the junctions they use are then
     excluded from A5SS/A3SS detection so the same signal is not double-reported.
 
-    ``max_exon`` bounds how long a candidate MXE exon may be; raise it for loci with
-    unusually long mutually exclusive exons.
+    ``max_exon`` bounds how long a candidate MXE exon may be and ``max_candidates`` how
+    many may share one anchor; raise them for loci with unusually long or unusually
+    numerous mutually exclusive exons.
     """
     parts = []
     used: set = set()
@@ -271,7 +340,9 @@ def detect_events(
             used.add((e.chrom, e.inc2_start, e.inc2_end, e.strand))
             used.add((e.chrom, e.skip_start, e.skip_end, e.strand))
     if "MXE" in types:
-        mxe = detect_mxe_events(annotated, max_exon=max_exon, exclude=used)
+        mxe = detect_mxe_events(
+            annotated, max_exon=max_exon, exclude=used, max_candidates=max_candidates
+        )
         parts.append(mxe)
         for e in mxe.itertuples(index=False):
             for js, je in (

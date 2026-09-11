@@ -7,6 +7,19 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Fixed
+- **MXE detection could grow as the fourth power of a locus's exons.** Removing the
+  one-pair-per-anchor truncation in 0.9.0 fixed a correctness bug and introduced a
+  scalability one: every `(upstream, downstream)` junction combination at an anchor is a
+  candidate, so `n` real exons arrive with about `n**2` of them — the real exons plus
+  every span from one exon's start to a later exon's end — and pairing all of those is
+  quadratic again. **80 exons under one anchor produced 1,677,140 rows in 5.9 s.**
+  Candidates are now ranked by the read support of their weaker flanking junction and the
+  best `max_candidates` (default 50) are kept, with a warning naming the busiest anchor.
+  Reachable as `detect_events(max_candidates=...)` and `run --max-mxe-candidates`.
+  Two geometric rules were tried first and both **deleted 15–22 % of the injected events**
+  along with the spans, because a noise junction sharing the anchor's donor is
+  indistinguishable in shape from a real exon; read support distinguishes them. All 200
+  injected events are recovered at every seed tested.
 - **An unestimable dispersion was silently treated as no dispersion.** When no unit has
   more informative replicates than fitted group means there is no residual degree of
   freedom anywhere, and `estimate_precision` returned `max_precision` — asserting *no

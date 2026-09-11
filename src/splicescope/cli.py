@@ -116,7 +116,9 @@ def _cmd_run(args: argparse.Namespace) -> int:
     # event-level: cassette (SE), A5SS and A3SS events with rMATS-style PSI
     from . import events as _events
 
-    evs = _events.detect_events(annotated, max_exon=args.max_exon)
+    evs = _events.detect_events(
+        annotated, max_exon=args.max_exon, max_candidates=args.max_mxe_candidates
+    )
     if not evs.empty:
         evs.to_csv(outdir / "events.tsv", sep="\t", index=False)
         epsi = _events.event_psi(annotated, evs, min_reads=args.min_reads)
@@ -376,6 +378,13 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=1000,
         help="longest candidate exon considered for mutually-exclusive-exon events",
+    )
+    r.add_argument(
+        "--max-mxe-candidates",
+        type=int,
+        default=50,
+        help="most candidate exons one donor/acceptor anchor may hold before it is "
+        "treated as noise and skipped (pair enumeration is quadratic in this)",
     )
     r.add_argument("--seed", type=int, default=0)
     r.set_defaults(func=_cmd_run)

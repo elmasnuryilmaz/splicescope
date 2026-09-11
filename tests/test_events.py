@@ -409,3 +409,33 @@ def test_max_candidates_reaches_through_detect_events():
         wide = detect_events(_mxe_cluster(60), types=("MXE",), max_candidates=200)
         narrow = detect_events(_mxe_cluster(60), types=("MXE",), max_candidates=10)
     assert len(wide) > len(narrow)
+
+
+def test_a_dense_tandem_array_keeps_every_real_exon():
+    """Support ranking alone is not enough. In a tandem array every candidate is flanked
+    by equally deep junctions, so the order under the cap is arbitrary and the cut takes
+    real exons with it — 11 densely packed exons kept only 6. A span runs from one exon's
+    start to a later exon's end, so it is always longer than the real exon sharing its
+    start: shortest-first breaks the tie the right way."""
+    from splicescope.events import detect_mxe_events
+
+    def array(n_exons, exon=60, gap=40, count=500):
+        rows, pos = [], 1000
+        for _ in range(n_exons):
+            rows.append(dict(chrom="chr1", start=1000, end=pos, strand="+",
+                             sample="s1", count=count, gene_id="g1"))
+            rows.append(dict(chrom="chr1", start=pos + exon + 1, end=90000, strand="+",
+                             sample="s1", count=count, gene_id="g1"))
+            pos += exon + gap
+        return pd.DataFrame(rows).drop_duplicates(["chrom", "start", "end", "strand"])
+
+    import warnings
+
+    for n in (8, 11, 15, 25):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            events = detect_mxe_events(array(n))
+        expected = {(1000 + i * 100 + 1, 1000 + i * 100 + 60) for i in range(n)}
+        seen = {(r.exonA_start, r.exonA_end) for r in events.itertuples(index=False)}
+        seen |= {(r.exonB_start, r.exonB_end) for r in events.itertuples(index=False)}
+        assert expected <= seen, f"{n}-exon array lost {len(expected - seen)} real exons"

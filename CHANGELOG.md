@@ -49,10 +49,16 @@ All notable changes to this project are documented here. The format is based on
   Candidates are now ranked by the read support of their weaker flanking junction and the
   best `max_candidates` (default 50) are kept, with a warning naming the busiest anchor.
   Reachable as `detect_events(max_candidates=...)` and `run --max-mxe-candidates`.
-  Two geometric rules were tried first and both **deleted 15–22 % of the injected events**
-  along with the spans, because a noise junction sharing the anchor's donor is
+  Two purely geometric rules were tried first and both **deleted 15–22 % of the injected
+  events** along with the spans, because a noise junction sharing the anchor's donor is
   indistinguishable in shape from a real exon; read support distinguishes them. All 200
   injected events are recovered at every seed tested.
+  Support alone is not enough either: in a *tandem array* every candidate is flanked by
+  equally deep junctions, so the order under the cap was arbitrary and the cut took real
+  exons with it — 11 densely packed exons kept only 6, and 15 kept 5. The shorter exon
+  breaks the tie, since a span runs from one exon's start to a later exon's end and is
+  always longer than the real exon sharing its start. Arrays of 8, 11, 15 and 25 exons now
+  keep every one, the simulator still recovers 200/200, and the noisy anchor stays capped.
 - **An unestimable dispersion was silently treated as no dispersion.** When no unit has
   more informative replicates than fitted group means there is no residual degree of
   freedom anywhere, and `estimate_precision` returned `max_precision` — asserting *no

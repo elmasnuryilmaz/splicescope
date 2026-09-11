@@ -214,7 +214,13 @@ def detect_mxe_events(
             # supported by *both* of its junctions, so rank candidates by the weaker of
             # the two and keep the best `max_candidates`. Truncation is reported.
             if len(plist) > max_candidates:
-                plist.sort(key=lambda c: _support(c, reads), reverse=True)
+                # Support first, then the shorter exon. The tie-break matters: in a
+                # tandem array every candidate is flanked by equally deep junctions, so
+                # support alone leaves the order arbitrary and the cut takes real exons
+                # with it — 11 densely packed exons kept only 6. A span reaches from one
+                # exon's start to a later exon's end and is therefore always longer than
+                # the real exon sharing its start, so shortest-first selects the exons.
+                plist.sort(key=lambda c: (-_support(c, reads), c[1] - c[0]))
                 crowded.append((chrom, strand, s, e, len(plist)))
                 plist = plist[:max_candidates]
             plist.sort(key=lambda p: (p[0], p[1]))

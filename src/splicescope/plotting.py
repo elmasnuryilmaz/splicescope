@@ -183,9 +183,16 @@ def plot_roc(y_true, scores, ax=None):
     return ax
 
 
-def savefig(fig, path: str | Path, dpi: int = 150):
+def savefig(fig, path: str | Path, dpi: int = 150, close: bool = True):
+    """Write ``fig`` to ``path``, creating parent directories, and release it.
+
+    pyplot keeps every figure alive until it is closed, so a pipeline that writes a
+    dozen panels per run leaks all of them; pass ``close=False`` to keep the figure.
+    """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.tight_layout()
     fig.savefig(path, dpi=dpi, bbox_inches="tight")
+    if close:
+        plt.close(fig)
     return path

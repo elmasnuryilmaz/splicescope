@@ -117,3 +117,19 @@ def test_savefig_creates_missing_parent_directories(tmp_path):
     written = plotting.savefig(fig, out)
     assert written == out
     assert out.exists() and out.stat().st_size > 0
+
+
+def test_savefig_releases_the_figure_so_pipelines_do_not_leak(tmp_path):
+    """pyplot keeps every figure alive until closed; `run` writes up to eight per
+    invocation and kept them all, which matplotlib warns about past twenty."""
+    before = len(plotting.plt.get_fignums())
+    for i in range(25):
+        fig, ax = plotting.plt.subplots()
+        ax.plot([0, 1], [0, 1])
+        plotting.savefig(fig, tmp_path / f"f{i}.png")
+    assert len(plotting.plt.get_fignums()) == before
+
+    fig, _ = plotting.plt.subplots()
+    plotting.savefig(fig, tmp_path / "kept.png", close=False)
+    assert fig.number in plotting.plt.get_fignums()
+    plotting.plt.close(fig)

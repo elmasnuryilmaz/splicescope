@@ -14,10 +14,33 @@ Every junction is keyed by ``(chrom, start, end, strand)``.
 
 from __future__ import annotations
 
+import gzip
+import re
 from collections import defaultdict
 from pathlib import Path
 
 import pandas as pd
+
+#: STAR writes ``{outFileNamePrefix}SJ.out.tab``, so the separator before ``SJ.out`` is
+#: whatever the prefix ended with — commonly ``_``, ``.``, ``/`` or nothing at all.
+_SJ_SUFFIX = re.compile(r"[._-]?SJ\.out$", re.IGNORECASE)
+
+
+def sample_name_from_path(path: str | Path) -> str:
+    """Derive a sample name from an ``SJ.out.tab`` filename.
+
+    ``A1_SJ.out.tab``, ``A1.SJ.out.tab``, ``A1SJ.out.tab`` and ``A1.tab`` all give ``A1``.
+    """
+    path = Path(path)
+    return _SJ_SUFFIX.sub("", path.stem) or path.stem
+
+
+def open_text(path: str | Path):
+    """Open a plain or gzipped text file. Reference annotations ship as ``.gz``."""
+    path = Path(path)
+    if path.suffix == ".gz":
+        return gzip.open(path, "rt")
+    return open(path)
 
 # STAR SJ.out.tab strand codes and intron-motif codes.
 _STAR_STRAND = {0: ".", 1: "+", 2: "-"}
@@ -55,7 +78,7 @@ def read_star_sj(path: str | Path, sample: str | None = None) -> pd.DataFrame:
     ``count`` is the number of uniquely-mapping reads crossing the junction.
     """
     path = Path(path)
-    sample = sample or path.stem.replace(".SJ.out", "").replace("SJ.out", "") or path.stem
+    sample = sample or sample_name_from_path(path)
     cols = [
         "chrom",
         "start",
@@ -106,12 +129,14 @@ def read_gtf_junctions(path: str | Path) -> pd.DataFrame:
     Exons are grouped per transcript, sorted, and the gaps between consecutive
     exons become known introns. The result is a DataFrame with columns
     ``[chrom, start, end, strand, gene_id]`` (one row per unique junction).
+
+    The file may be plain or gzipped; GENCODE and Ensembl both ship ``.gtf.gz``.
     """
     path = Path(path)
     exons_by_tx: dict[str, list[tuple[int, int]]] = defaultdict(list)
     tx_meta: dict[str, tuple[str, str, str]] = {}  # tx -> (chrom, strand, gene_id)
 
-    with open(path) as fh:
+    with open_text(path) as fh:
         for line in fh:
             if line.startswith("#") or not line.strip():
                 continue
@@ -150,7 +175,7 @@ def read_gmt(path: str | Path) -> dict[str, list[str]]:
     The description column is ignored. Compatible with MSigDB / GO / KEGG exports.
     """
     sets: dict[str, list[str]] = {}
-    with open(path) as fh:
+    with open_text(path) as fh:
         for line in fh:
             parts = line.rstrip("\n").split("\t")
             if len(parts) < 3:

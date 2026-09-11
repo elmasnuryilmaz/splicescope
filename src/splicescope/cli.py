@@ -34,6 +34,38 @@ def _cmd_simulate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _check_samples(sj_paths: dict, groups: dict) -> int:
+    """Fail loudly when the SJ files and groups.tsv do not describe the same samples.
+
+    Without this the mismatch is silent all the way down: every condition maps to NaN,
+    no sample belongs to either group, the test returns an empty frame and the run
+    reports "0 significant junctions" and exits 0. For a tool whose job is to find
+    differential splicing that is the worst possible failure — a clean run and a wrong
+    conclusion.
+    """
+    files, named = set(sj_paths), set(groups)
+    if files & named:
+        for missing, where in (
+            (sorted(files - named), "not listed in --groups"),
+            (sorted(named - files), "listed in --groups but has no *.tab file"),
+        ):
+            if missing:
+                shown = ", ".join(missing[:6]) + (" ..." if len(missing) > 6 else "")
+                print(f"warning: {len(missing)} sample(s) {where}: {shown}", file=sys.stderr)
+        return 0
+
+    print(
+        "error: no sample name is shared between --sj-dir and --groups, so every "
+        "sample would be unassigned and the run would report nothing.\n"
+        f"  from filenames: {', '.join(sorted(files)[:8])}\n"
+        f"  in groups.tsv : {', '.join(sorted(named)[:8])}\n"
+        "  sample names come from the filename with a trailing 'SJ.out' removed "
+        "(A1_SJ.out.tab -> A1).",
+        file=sys.stderr,
+    )
+    return 2
+
+
 def _cmd_run(args: argparse.Namespace) -> int:
     import pandas as pd
 
@@ -48,14 +80,19 @@ def _cmd_run(args: argparse.Namespace) -> int:
     outdir = Path(args.outdir)
     outdir.mkdir(parents=True, exist_ok=True)
 
-    sj_paths = {p.stem.replace(".SJ.out", ""): p for p in sorted(Path(args.sj_dir).glob("*.tab"))}
+    sj_paths = {
+        _io.sample_name_from_path(p): p for p in sorted(Path(args.sj_dir).glob("*.tab"))
+    }
     if not sj_paths:
         print(f"error: no *.tab files in {args.sj_dir}", file=sys.stderr)
         return 2
-    observed = _io.read_many_star_sj(sj_paths)
-    known = _io.read_gtf_junctions(args.gtf)
     groups_df = pd.read_csv(args.groups, sep="\t")
     groups = dict(zip(groups_df["sample"], groups_df["condition"], strict=False))
+    if _check_samples(sj_paths, groups) != 0:
+        return 2
+
+    observed = _io.read_many_star_sj(sj_paths)
+    known = _io.read_gtf_junctions(args.gtf)
 
     annotated = _annot.annotate_junctions(observed, known)
     summary = _annot.annotation_summary(annotated)

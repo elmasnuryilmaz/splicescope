@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-09-11
+
 ### Added
 - **The protein-consequence layer now runs on the built-in data, with no downloads.**
   `simulate` writes the chromosome its annotation describes: coding exons drawn from the
@@ -82,7 +84,7 @@ All notable changes to this project are documented here. The format is based on
   ROC-AUC 0.785 to 0.795 (AP 0.702 → 0.700), because `mean_psi_donor` now averages over
   the samples where a junction was measured absent as well.
 
-### Added (previously)
+### Also added
 - Test coverage for the plotting module: threshold behaviour of both volcano
   plots, fixed event-type ordering with zero-fill, top-N truncation in the
   enrichment plot, and that `savefig` creates missing parent directories.
@@ -92,6 +94,27 @@ All notable changes to this project are documented here. The format is based on
 - `Issues`, `Changelog`, `Documentation` and `Archive` (Zenodo DOI) entries under
   `[project.urls]`.
 - Zenodo DOI badge, and the DOI in `CITATION.cff` (concept and version).
+- Gzipped input: `read_gtf_junctions` and `read_gmt` now open `.gz` directly. GENCODE and
+  Ensembl ship `.gtf.gz`, and the README's own example passes one, which until now failed
+  with a `UnicodeDecodeError`.
+- `io.sample_name_from_path`, and a test that `__version__`, `CITATION.cff` and the
+  CHANGELOG agree — they had drifted to 0.5.0, 0.8.1 and 0.8.1 respectively, so
+  `splicescope --version` reported a release three versions old.
+
+### Fixed (packaging and CLI)
+- **`run` reported "0 significant junctions" and exited 0 when sample names did not
+  match.** Names were derived with `stem.replace(".SJ.out", "")`, but STAR writes
+  `{prefix}SJ.out.tab`, so the near-universal real filename `SampleA_SJ.out.tab` yielded
+  the sample name `SampleA_SJ.out` while `groups.tsv` said `SampleA`. Nothing checked the
+  overlap: conditions mapped to NaN, no sample joined either group, the test returned an
+  empty frame, and the user got a clean run, an empty table and the conclusion "no
+  differential splicing". Names now tolerate any separator before `SJ.out`, a total
+  mismatch is an error naming both sets, and a partial one warns.
+- The single source of truth for the version is `splicescope.__version__`; `pyproject.toml`
+  reads it dynamically.
+- `savefig` now closes the figure it wrote. pyplot keeps every figure alive until closed,
+  and `run` writes up to eight per invocation, so a run leaked all of them and matplotlib
+  warned past twenty. `close=False` keeps the old behaviour.
 
 ## [0.8.1] — 2026-09-03
 

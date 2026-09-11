@@ -57,8 +57,8 @@ def _check_samples(sj_paths: dict, groups: dict) -> int:
     print(
         "error: no sample name is shared between --sj-dir and --groups, so every "
         "sample would be unassigned and the run would report nothing.\n"
-        f"  from filenames: {', '.join(sorted(files)[:8])}\n"
-        f"  in groups.tsv : {', '.join(sorted(named)[:8])}\n"
+        f"  from filenames: {', '.join(map(str, sorted(map(str, files))[:8]))}\n"
+        f"  in groups.tsv : {', '.join(map(str, sorted(map(str, named))[:8]))}\n"
         "  sample names come from the filename with a trailing 'SJ.out' removed "
         "(A1_SJ.out.tab -> A1).",
         file=sys.stderr,
@@ -86,8 +86,14 @@ def _cmd_run(args: argparse.Namespace) -> int:
     if not sj_paths:
         print(f"error: no *.tab files in {args.sj_dir}", file=sys.stderr)
         return 2
-    groups_df = pd.read_csv(args.groups, sep="\t")
-    groups = dict(zip(groups_df["sample"], groups_df["condition"], strict=False))
+    # Sample names are labels. Left to infer, pandas reads a digit-only column as int64,
+    # which never equals the strings derived from filenames — and would also turn "007"
+    # into "7". Both sides must be strings or nothing matches and nothing says why.
+    groups_df = pd.read_csv(args.groups, sep="\t", dtype={"sample": str})
+    groups = {
+        str(sample): str(condition)
+        for sample, condition in zip(groups_df["sample"], groups_df["condition"], strict=False)
+    }
     if _check_samples(sj_paths, groups) != 0:
         return 2
 

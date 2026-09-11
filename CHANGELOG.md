@@ -7,6 +7,20 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Fixed
+- **`normalize_gene_id` collapsed whole gene families in a model organism.** 0.9.0 began
+  stripping a trailing `.<digits>` from every identifier, on the docstring's own premise
+  that "gene symbols do not end in `.<digits>`". *C. elegans* sequence names — the standard
+  identifier for the majority of worm genes, which have no CGC name — are exactly that
+  shape, so `C42D8.1`, `C42D8.2` and `C42D8.3` normalised to one key. The background size,
+  the set size, the overlap, the fold enrichment, the p-value and the reported
+  leading-edge gene list all shrank with them, silently and with exit 0. The suffix is now
+  removed only when the stem looks like an Ensembl or RefSeq accession.
+- **`run` crashed on digit-only sample names.** pandas reads a `sample` column of `101`,
+  `102`, … as int64, which can never equal the strings derived from filenames, so the new
+  mismatch check took its error branch on a perfectly consistent cohort — and then died
+  with `TypeError: sequence item 0: expected str instance, int found` and exit 1 rather
+  than printing its diagnostic. The column is now read as text, which also keeps `007`
+  from becoming `7`.
 - **MXE detection could grow as the fourth power of a locus's exons.** Removing the
   one-pair-per-anchor truncation in 0.9.0 fixed a correctness bug and introduced a
   scalability one: every `(upstream, downstream)` junction combination at an anchor is a

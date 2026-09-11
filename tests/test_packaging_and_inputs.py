@@ -125,3 +125,46 @@ def test_gmt_can_be_gzipped(tmp_path):
         fh.write(content)
 
     assert read_gmt(plain) == read_gmt(packed) == {"TERM_A": ["G1", "G2"], "TERM_B": ["G2", "G3"]}
+
+
+def _numeric_cohort(tmp_path, names):
+    """A dataset whose samples are named with digits, as sequencing run IDs often are."""
+    data = tmp_path / "data"
+    write_dataset(simulate_dataset(n_genes=8, n_per_group=3, seed=1), data)
+    renamed = data / "numeric"
+    renamed.mkdir()
+    for name, path in zip(names, sorted((data / "sj").glob("*.tab")), strict=True):
+        (renamed / f"{name}_SJ.out.tab").write_bytes(path.read_bytes())
+    groups = data / "numeric_groups.tsv"
+    groups.write_text(
+        "sample\tcondition\n"
+        + "".join(f"{n}\t{'A' if i < 3 else 'B'}\n" for i, n in enumerate(names))
+    )
+    return data, renamed, groups
+
+
+@pytest.mark.parametrize(
+    "names",
+    [
+        ["101", "102", "103", "104", "105", "106"],   # plain digits
+        ["001", "002", "003", "004", "005", "006"],   # zero-padded: "007" must not become 7
+    ],
+)
+def test_digit_only_sample_names_are_labels_not_numbers(tmp_path, names):
+    """pandas reads a digit-only sample column as int64, which can never equal the strings
+    derived from filenames. The mismatch check then crashed on `str.join` over ints."""
+    data, sj_dir, groups = _numeric_cohort(tmp_path, names)
+    out = tmp_path / f"out_{names[0]}"
+
+    rc = main(
+        [
+            "run",
+            "--sj-dir", str(sj_dir),
+            "--gtf", str(data / "annotation.gtf"),
+            "--groups", str(groups),
+            "--outdir", str(out),
+        ]
+    )
+    assert rc == 0
+    result = pd.read_csv(out / "differential_splicing.tsv", sep="\t")
+    assert not result.empty, "a consistently named numeric cohort must produce results"

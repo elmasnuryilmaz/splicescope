@@ -148,3 +148,39 @@ def test_gene_symbols_reach_the_differential_table_from_the_gtf(gtf_with_symbols
     annotated = annotate_junctions(observed, known)
     assert annotated.loc[0, "gene_name"] == "TP53"
     assert annotated.loc[0, "gene_id"] == "ENSG00000141510.16"
+
+
+def test_sequence_names_ending_in_digits_are_not_de_versioned():
+    """C. elegans sequence names are the standard identifier for most worm genes and are
+    exactly `.<digits>` shaped. Stripping that collapsed whole gene families into one,
+    shrinking the background, the set size, the overlap and the p-value with them."""
+    from splicescope.enrich import normalize_gene_id
+
+    worm = ["C42D8.1", "C42D8.2", "C42D8.3", "Y110A7A.10", "ZK1067.1", "F14H3.4"]
+    assert len({normalize_gene_id(g) for g in worm}) == len(worm)
+
+
+def test_accessions_are_still_de_versioned():
+    from splicescope.enrich import normalize_gene_id
+
+    assert normalize_gene_id("ENSG00000141510.16") == "ENSG00000141510"
+    assert normalize_gene_id("ENSMUSG00000017146.8") == "ENSMUSG00000017146"
+    assert normalize_gene_id("NM_000546.6") == "NM_000546"
+    assert normalize_gene_id("XP_011527858.1") == "XP_011527858"
+
+
+def test_a_worm_gene_family_keeps_every_member_in_the_enrichment():
+    """Each collapsed member was silently dropped from the background and from the
+    reported leading-edge gene list."""
+    from splicescope.enrich import over_representation
+
+    family = ["C42D8.1", "C42D8.2", "C42D8.3"]
+    background = family + [f"gene-{i}" for i in range(97)]
+    result = over_representation(family, background, {"SET": family + ["gene-0", "gene-1"]})
+
+    assert len(result) == 1
+    row = result.iloc[0]
+    assert row["n_background"] == 100
+    assert row["set_size"] == 5
+    assert row["overlap"] == 3
+    assert set(row["genes"].split(",")) == set(family)

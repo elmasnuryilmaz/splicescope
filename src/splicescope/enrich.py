@@ -22,6 +22,9 @@ from scipy import stats
 from .diff import benjamini_hochberg
 
 _VERSION_SUFFIX = re.compile(r"\.\d+$")
+#: What a de-versioned stem must look like before the suffix is treated as a version:
+#: Ensembl (``ENSG``, ``ENSMUST``, …) or RefSeq-style (``NM_``, ``XP_``, …) accessions.
+_ACCESSION = re.compile(r"^(?:ENS[A-Z]*[EGTP]\d+|[A-Z]{2}_\d+)$", re.IGNORECASE)
 
 
 def normalize_gene_id(gene: str) -> str:
@@ -29,10 +32,19 @@ def normalize_gene_id(gene: str) -> str:
 
     A GTF gives versioned accessions (``ENSG00000141510.16``, ``NM_000546.6``); gene-set
     files give either symbols or *unversioned* accessions, so a verbatim comparison
-    matches nothing at all. The version suffix is dropped and the rest upper-cased. Gene
-    symbols do not end in ``.<digits>``, so this is safe for them.
+    matches nothing at all. The version suffix is dropped and the rest upper-cased.
+
+    Only from accessions, though. Stripping ``.<digits>`` from everything looks safe for
+    human symbols and is not safe in general: *C. elegans* sequence names — the standard
+    identifier for the majority of worm genes, which have no CGC name — are exactly that
+    shape, so ``C42D8.1``, ``C42D8.2`` and ``C42D8.3`` would collapse to one gene and take
+    the background size, the set size, the overlap and the p-value down with them.
     """
-    return _VERSION_SUFFIX.sub("", str(gene).strip()).upper()
+    text = str(gene).strip()
+    stem = _VERSION_SUFFIX.sub("", text)
+    if stem != text and _ACCESSION.match(stem):
+        text = stem
+    return text.upper()
 
 
 def _normalized_index(values: Iterable[str]) -> dict[str, str]:

@@ -21,11 +21,18 @@ Both report ``delta_psi`` (group B minus group A), ``pvalue`` and BH ``qvalue``.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pandas as pd
 from scipy import stats
 
-from .betabinom import estimate_precision, estimate_precision_per_unit, lrt
+from .betabinom import (
+    dispersion_is_estimable,
+    estimate_precision,
+    estimate_precision_per_unit,
+    lrt,
+)
 
 #: Count column pairs tried in order when ``inc_col``/``total_col`` are not given.
 _COUNT_COLUMNS = {
@@ -121,6 +128,17 @@ def _betabinom_test(
         return pd.DataFrame()
     k, n, valid = k[keep], n[keep], valid[keep]
 
+    if not dispersion_is_estimable(n, valid, groups=[is_a, is_b]):
+        warnings.warn(
+            "dispersion could not be estimated: no unit has more informative replicates "
+            "than fitted group means, so replicate-to-replicate variability is unknown. "
+            "The beta-binomial test falls back to assuming none, which makes it as narrow "
+            "as a binomial test and its p-values far too small — a 1-vs-1 comparison of "
+            "Psi 0.300 against 0.360 at 1000 reads returns q=4.5e-03 on no replication at "
+            "all. Add replicates, raise min_samples, or do not treat these p-values as "
+            "evidence.",
+            stacklevel=3,
+        )
     precision = estimate_precision(k, n, valid, groups=[is_a, is_b])
     if dispersion == "per_unit_floor":
         per_unit = estimate_precision_per_unit(k, n, valid, groups=[is_a, is_b])

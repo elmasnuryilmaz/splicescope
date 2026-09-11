@@ -170,3 +170,34 @@ def test_per_unit_precision_matches_the_shared_estimator_applied_row_by_row():
         ]
     )
     assert np.allclose(vectorised, row_by_row)
+
+
+def test_dispersion_is_not_estimable_without_replication():
+    """One informative sample per group gives a residual of exactly zero, so the design
+    says nothing about replicate-to-replicate scatter."""
+    from splicescope.betabinom import dispersion_is_estimable
+
+    n = np.full((5, 2), 1000.0)
+    mask = np.ones_like(n, dtype=bool)
+    group_a = np.array([True, False])
+    assert not dispersion_is_estimable(n, mask, groups=[group_a, ~group_a])
+
+
+def test_dispersion_is_estimable_with_two_replicates_per_group():
+    from splicescope.betabinom import dispersion_is_estimable
+
+    n = np.full((5, 4), 1000.0)
+    mask = np.ones_like(n, dtype=bool)
+    group_a = np.array([True, True, False, False])
+    assert dispersion_is_estimable(n, mask, groups=[group_a, ~group_a])
+
+
+def test_dispersion_is_not_estimable_when_every_unit_is_covered_in_one_sample_only():
+    from splicescope.betabinom import dispersion_is_estimable
+
+    n = np.full((4, 4), 1000.0)
+    group_a = np.array([True, True, False, False])
+    mask = np.zeros_like(n, dtype=bool)
+    mask[:, 0] = True   # only one sample informative anywhere
+    mask[:, 2] = True
+    assert not dispersion_is_estimable(n, mask, groups=[group_a, ~group_a])

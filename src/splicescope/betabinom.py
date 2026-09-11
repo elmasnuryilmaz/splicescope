@@ -92,6 +92,37 @@ def fit_mu(k: np.ndarray, n: np.ndarray, mask: np.ndarray, s: float) -> np.ndarr
     return mu
 
 
+def dispersion_is_estimable(
+    n: np.ndarray, mask: np.ndarray, groups: list[np.ndarray] | None = None
+) -> bool:
+    """Whether the design carries any information about replicate-to-replicate scatter.
+
+    Dispersion is measured by how far replicates fall from their own group's mean, so a
+    group holding a single informative sample contributes a residual of exactly zero and
+    says nothing. When no unit anywhere has more informative samples than fitted group
+    means there is no residual degree of freedom at all, and :func:`estimate_precision`
+    falls back to ``max_precision`` — which asserts *no overdispersion* rather than
+    *unknown dispersion*, narrowing the test to a plain binomial one.
+
+    That failure is quiet and severe: a 1-vs-1 comparison of Ψ 0.300 against 0.360 at
+    1000 reads returns ``q = 4.5e-03`` on no replication whatsoever. Callers should check
+    this before trusting a p-value.
+    """
+    blocks = groups if groups else [np.ones(n.shape[1], dtype=bool)]
+    covered = np.zeros_like(mask)
+    n_params = np.zeros(n.shape[0])
+    for block in blocks:
+        block_mask = mask & block[None, :]
+        covered |= block_mask
+        n_params += (np.where(block_mask, n, 0.0).sum(axis=1) > 0).astype(float)
+
+    usable = (covered.sum(axis=1) - n_params) > 0
+    if not usable.any():
+        return False
+    keep = usable[:, None] & covered
+    return float(keep.sum()) - float(n_params[usable].sum()) > 0
+
+
 def estimate_precision(
     k: np.ndarray,
     n: np.ndarray,
@@ -126,6 +157,10 @@ def estimate_precision(
     then taken about each group's own mean: pooling groups that genuinely differ
     would charge that difference to dispersion and destroy the power the test is
     supposed to have.
+
+    When the design cannot support an estimate at all this returns ``max_precision``,
+    which asserts no overdispersion rather than admitting ignorance — check
+    :func:`dispersion_is_estimable` first. ``differential_splicing`` does.
     """
     blocks = groups if groups else [np.ones(k.shape[1], dtype=bool)]
 

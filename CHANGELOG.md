@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **An unestimable dispersion was silently treated as no dispersion.** When no unit has
+  more informative replicates than fitted group means there is no residual degree of
+  freedom anywhere, and `estimate_precision` returned `max_precision` — asserting *no
+  overdispersion* rather than admitting the design says nothing. The beta-binomial test
+  then narrows to a plain binomial one: a **1-vs-1 comparison of Ψ 0.300 against 0.360 at
+  1000 reads returns q = 4.5e-03**, on no replication whatsoever, with nothing in the
+  output to say so. `dispersion_is_estimable` now reports whether the design can support
+  an estimate and `differential_splicing` warns when it cannot. The default
+  `min_samples=2` already avoided this; passing `min_samples=1` walked straight into it.
+
 ## [0.9.0] — 2026-09-11
 
 ### Added

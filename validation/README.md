@@ -62,9 +62,11 @@ the outputs are unchanged apart from row order.
 > when the stop it reaches is the transcript's own; a PTC in an extension of the **final**
 > exon now escapes NMD, because an extension is contiguous with the exon it joins and so
 > there is no junction after it; and exon-skipping junctions are no longer interpreted as
-> splice-site shifts. All three move events *out* of `ptc_nmd`, so the contrast the
-> SMG1i analysis reports is expected to sharpen rather than weaken — but that is a
-> prediction, not a measurement, until the run is repeated.
+> splice-site shifts. All three move events *out* of `ptc_nmd`.
+>
+> The second of those has been measured — see [the last-exon
+> correction](#the-last-exon-correction-measured) below. The other two need the GENCODE
+> annotation and the GRCh38 assembly to re-derive, so they remain outstanding.
 
 ### The rank test could not work
 
@@ -209,6 +211,41 @@ and prioritise events, not to filter them. The negative set in the second datase
 imperfect — it is defined as "not in the NMD-sensitive table", which was itself filtered
 at ΔPSI ≥ 0.1, so mildly sensitive events sit among the negatives and bias toward the
 null.
+
+### The last-exon correction, measured
+
+Up to 0.8.1 a premature stop inside an **extension of the transcript's final exon** was
+called `ptc_nmd`. It cannot be: an extension is contiguous with the exon it joins, so when
+that exon is the last one the stop lies past the final exon–exon junction and the
+50-nucleotide rule has no junction to measure against. The old code measured a distance to
+a junction that does not exist.
+
+Re-running the caller needs the annotation and the assembly, but the affected rows recover
+from the 0.8.x output alone: the old distance formula
+`insert_length − ptc_offset − 3 + Σ downstream_exons[:−1]` collapses to
+`insert_length − ptc_offset − 3` exactly when a single downstream exon remained. **166 of
+3,548** junctions carry that signature. Reproduce with
+[`last_exon_correction.py`](last_exon_correction.py):
+
+| | ptc_nmd | % NMD-sensitive | vs no-stop | odds ratio | Fisher p |
+|---|---:|---:|---:|---:|---:|
+| 0.8.1, as published above | 3,017 | 48.5 % | 23.5 % | 3.07 | 4.5e-12 |
+| after the correction | 2,851 | **49.6 %** | 23.5 % | **3.21** | **4.8e-13** |
+
+The contrast sharpens, as a correction that removes misassigned events should. But the
+stronger result is that the correction made a prediction the experiment could have
+refused, and did not:
+
+| | n | % NMD-sensitive |
+|---|---:|---:|
+| reclassified to `ptc_escape` | 166 | **29.5 %** |
+| still `ptc_nmd` | 2,851 | 49.6 % |
+| no stop possible (baseline) | 196 | 23.5 % |
+
+Odds ratio 0.43, two-sided Fisher p = 3.8e-07. The 166 events behave like escapers rather
+than decay targets, and sit far closer to the no-stop baseline than to the events they
+were grouped with. The fix is not merely defensible on reading-frame grounds; the
+measured decay data agrees with it.
 
 **A coordinate trap worth recording.** The junction table reports the flanking exon
 boundaries, not the intron: the true intron is `[start + 1, end − 1]`. Taken literally,

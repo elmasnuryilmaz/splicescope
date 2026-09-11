@@ -173,7 +173,15 @@ def lrt(
     ``group_a`` and ``group_b`` are boolean masks over the sample axis. Returns
     ``(mu_a, mu_b, statistic, pvalue)``; the statistic is compared to a
     chi-square with one degree of freedom.
+
+    Samples in neither group take no part. Both hypotheses must be fitted to the
+    same observations or the ratio is not a likelihood ratio: leaving them in the
+    null while the alternative sees only the two groups charges their entire
+    likelihood to the null and inflates the statistic without bound — with six
+    ungrouped samples alongside a 3-vs-3 comparison, p went from 1.6e-09 to 9.7e-93
+    on unchanged group data.
     """
+    mask = mask & (group_a | group_b)[None, :]
     mask_a = mask & group_a[None, :]
     mask_b = mask & group_b[None, :]
 

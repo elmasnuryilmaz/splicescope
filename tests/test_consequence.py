@@ -330,3 +330,117 @@ def test_downstream_sequence_is_clipped_and_strand_aware(tmp_path):
         minus = make_transcript("-")
         tail_m, lengths_m = downstream_sequence(minus, fa, "chr1", 500)
         assert lengths_m == [100, 100]  # exons 401-500 and 101-200, in that order
+
+
+# --------------------------------------------------------------------------------
+# a stop where the protein natively ends is not a premature stop
+# --------------------------------------------------------------------------------
+
+
+def test_an_in_frame_exon_truncation_is_not_a_premature_stop(tmp_path):
+    """Removing whole codons leaves the downstream frame untouched, so the first stop
+    found is the transcript's own. Reporting it as a PTC turned an ordinary in-frame
+    deletion into a predicted termination event."""
+    from splicescope.consequence import EXON_TRUNCATION, predict_junction_consequence
+
+    # exons 101-200, 401-500, 701-800; the native stop is the last codon of the CDS
+    tx = make_transcript()
+    chrom = ["A"] * 900
+    for i in range(100, 200):
+        chrom[i] = "AAC"[(i - 100) % 3]
+    for i in range(400, 500):
+        chrom[i] = "AAC"[(i - 400) % 3]
+    for i in range(700, 800):
+        chrom[i] = "AAC"[(i - 700) % 3]
+    # place the native stop as the final codon of the last CDS block
+    mature_len = 300
+    assert mature_len % 3 == 0
+    chrom[797], chrom[798], chrom[799] = "T", "A", "A"
+    fasta = write_fasta(tmp_path, {"chr1": "".join(chrom)})
+
+    with GenomeFasta(fasta) as fa:
+        # intron 1 is 201-400; a donor shifted 3 nt earlier removes one codon
+        in_frame = predict_junction_consequence(tx, fa, "chr1", 198, 400)
+        assert in_frame is not None
+        assert in_frame.consequence_class == EXON_TRUNCATION
+        assert in_frame.ptc_offset is None
+        assert in_frame.frameshift is False
+
+
+def test_a_frame_shifting_truncation_still_reports_its_premature_stop(tmp_path):
+    from splicescope.consequence import predict_junction_consequence
+
+    tx = make_transcript()
+    chrom = ["A"] * 900
+    for start in (100, 400, 700):
+        for i in range(start, start + 100):
+            chrom[i] = "AAC"[(i - start) % 3]
+    # Removing 2 nt leaves frame 2, so the scan starts at offset 1 of the retained
+    # sequence and steps by 3: offset 19 is read as a codon, offset 20 is not.
+    # Exon 2 starts at genomic 401, so offset 19 is chrom index 419.
+    chrom[419], chrom[420], chrom[421] = "T", "G", "A"
+    fasta = write_fasta(tmp_path, {"chr1": "".join(chrom)})
+
+    with GenomeFasta(fasta) as fa:
+        shifted = predict_junction_consequence(tx, fa, "chr1", 199, 400)  # removes 2 nt
+        assert shifted.frameshift is True
+        assert shifted.consequence_class in (PTC_NMD, PTC_ESCAPE)
+        assert shifted.ptc_offset == 19
+
+
+# --------------------------------------------------------------------------------
+# GTF phase: 5'-incomplete coding sequences
+# --------------------------------------------------------------------------------
+
+
+def test_cds_phase_is_read_from_the_gtf_and_shifts_the_frame(tmp_path):
+    """GENCODE marks 5'-incomplete transcripts (cds_start_NF) with a non-zero phase on
+    the first CDS record. Ignoring it translates the whole transcript out of frame."""
+    from splicescope.consequence import load_transcripts
+
+    def gtf(phase):
+        attrs = 'gene_id "G1"; transcript_id "T1"; gene_name "GENE1";'
+        return (
+            f"chr1\tsrc\texon\t101\t200\t.\t+\t.\t{attrs}\n"
+            f"chr1\tsrc\tCDS\t101\t200\t.\t+\t{phase}\t{attrs}\n"
+            f"chr1\tsrc\texon\t401\t500\t.\t+\t.\t{attrs}\n"
+            f"chr1\tsrc\tCDS\t401\t500\t.\t+\t2\t{attrs}\n"
+        )
+
+    frames = {}
+    for phase in (0, 1, 2):
+        path = tmp_path / f"p{phase}.gtf"
+        path.write_text(gtf(phase))
+        tx = load_transcripts(path)["T1"]
+        assert tx.cds_phase == phase
+        frames[phase] = tx.frame_at(401)
+
+    # the three phases must give three different reading frames at the same position
+    assert len(set(frames.values())) == 3
+
+
+def test_cds_phase_defaults_to_zero_when_the_column_is_a_dot(tmp_path):
+    from splicescope.consequence import load_transcripts
+
+    attrs = 'gene_id "G1"; transcript_id "T1";'
+    path = tmp_path / "dot.gtf"
+    path.write_text(
+        f"chr1\tsrc\texon\t101\t200\t.\t+\t.\t{attrs}\n"
+        f"chr1\tsrc\tCDS\t101\t200\t.\t+\t.\t{attrs}\n"
+    )
+    assert load_transcripts(path)["T1"].cds_phase == 0
+
+
+def test_cds_phase_is_taken_from_the_first_block_in_transcription_order(tmp_path):
+    """On the minus strand the first coding block is the genomically last one."""
+    from splicescope.consequence import load_transcripts
+
+    attrs = 'gene_id "G1"; transcript_id "T1";'
+    path = tmp_path / "minus.gtf"
+    path.write_text(
+        f"chr1\tsrc\texon\t101\t200\t.\t-\t.\t{attrs}\n"
+        f"chr1\tsrc\tCDS\t101\t200\t.\t-\t1\t{attrs}\n"
+        f"chr1\tsrc\texon\t401\t500\t.\t-\t.\t{attrs}\n"
+        f"chr1\tsrc\tCDS\t401\t500\t.\t-\t2\t{attrs}\n"
+    )
+    assert load_transcripts(path)["T1"].cds_phase == 2

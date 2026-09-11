@@ -131,11 +131,19 @@ class Transcript:
     strand: str
     exons: list[tuple[int, int]]
     cds: list[tuple[int, int]] = field(default_factory=list)
+    #: GTF phase of the first coding block: bases to drop before the first whole codon.
+    #: Non-zero for 5'-incomplete CDS (GENCODE ``cds_start_NF``), where the annotated
+    #: coding sequence begins part-way through a codon.
+    cds_phase: int = 0
 
     def __post_init__(self) -> None:
         reverse = self.strand == "-"
         self.exons = sorted(self.exons, reverse=reverse)
         self.cds = sorted(self.cds, reverse=reverse)
+
+    def frame_at(self, position: int) -> int:
+        """How many bases of the codon spanning ``position`` already lie upstream."""
+        return (self.cds_length_before(position) - self.cds_phase) % 3
 
     @property
     def introns(self) -> list[tuple[int, int]]:
@@ -223,9 +231,13 @@ def load_transcripts(
                     "strand": fields[6],
                     "exon": [],
                     "CDS": [],
+                    "phase": {},
                 },
             )
-            entry[fields[2]].append((int(fields[3]), int(fields[4])))
+            block = (int(fields[3]), int(fields[4]))
+            entry[fields[2]].append(block)
+            if fields[2] == "CDS":
+                entry["phase"][block] = int(fields[7]) if fields[7].isdigit() else 0
 
     return {
         tid: Transcript(
@@ -236,10 +248,19 @@ def load_transcripts(
             strand=entry["strand"],
             exons=entry["exon"],
             cds=entry["CDS"],
+            cds_phase=_first_cds_phase(entry),
         )
         for tid, entry in records.items()
         if entry["exon"]
     }
+
+
+def _first_cds_phase(entry: dict) -> int:
+    """Phase of the coding block transcribed first — non-zero when the CDS is 5'-incomplete."""
+    if not entry["CDS"]:
+        return 0
+    first = min(entry["CDS"]) if entry["strand"] == "+" else max(entry["CDS"])
+    return entry["phase"].get(first, 0)
 
 
 def index_by_gene(transcripts: dict[str, Transcript]) -> dict[str, list[Transcript]]:
@@ -326,6 +347,21 @@ def _nmd_from_downstream(
     return offset_before + ptc, distance, distance > NMD_DISTANCE_RULE
 
 
+def _native_stop_offset(tx: Transcript, resume: int) -> int | None:
+    """Where the *annotated* stop codon sits in the sequence retained from ``resume``.
+
+    An event upstream of ``resume`` does not change the spliced transcript downstream of
+    it, so the annotated stop lies a fixed number of coding bases away. A stop found at or
+    beyond that point is where the protein was always going to end — calling it premature
+    turns an ordinary in-frame deletion into a termination event.
+    """
+    if not tx.cds:
+        return None
+    total = sum(end - start + 1 for start, end in tx.cds)
+    remaining = total - tx.cds_length_before(resume)
+    return remaining - 3 if remaining >= 3 else None
+
+
 def junction_change(tx: Transcript, start: int, end: int) -> tuple[str, int, int] | None:
     """What a novel junction adds to, or removes from, a neighbouring exon.
 
@@ -409,13 +445,17 @@ def predict_junction_consequence(
         return Consequence(**base, consequence_class=UTR_INSERTION)
 
     boundary = cstart if tx.strand == "+" else cend
-    frame = tx.cds_length_before(boundary) % 3
+    frame = tx.frame_at(boundary)
     base["frame_offset"] = frame
     # Removing bases shifts everything downstream; the stop, if any, is there.
     resume = cend + 1 if tx.strand == "+" else cstart - 1
     tail, lengths = downstream_sequence(tx, genome, chrom, resume)
     offset, distance, nmd = _nmd_from_downstream(tail, lengths, frame, 0)
-    if offset is None:
+    native = _native_stop_offset(tx, resume)
+    if offset is None or (native is not None and offset >= native):
+        # Removing a whole number of codons leaves the downstream frame untouched, so the
+        # first stop found is the transcript's own. The protein is shorter, not truncated
+        # by a premature stop.
         return Consequence(**base, consequence_class=EXON_TRUNCATION)
     base["ptc_offset"] = offset
     base["distance_to_last_junction"] = distance
@@ -521,7 +561,7 @@ def predict_consequence(
         return Consequence(**base, consequence_class=UTR_INSERTION)
 
     boundary = start if tx.strand == "+" else end
-    frame_offset = tx.cds_length_before(boundary) % 3
+    frame_offset = tx.frame_at(boundary)
     base["frame_offset"] = frame_offset
 
     sequence = genome.fetch(chrom, start, end, tx.strand)
@@ -539,7 +579,9 @@ def predict_consequence(
         offset, distance, nmd = _nmd_from_downstream(
             tail, lengths, (frame_offset + insert_length) % 3, insert_length
         )
-        if offset is None:
+        native = _native_stop_offset(tx, resume)
+        if offset is None or (native is not None and offset - insert_length >= native):
+            # read past where the protein natively ends: a frameshift with no premature stop
             return Consequence(**base, consequence_class=FRAMESHIFT)
         base["ptc_offset"] = offset
         base["distance_to_last_junction"] = distance

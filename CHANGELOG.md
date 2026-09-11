@@ -101,6 +101,28 @@ All notable changes to this project are documented here. The format is based on
   CHANGELOG agree — they had drifted to 0.5.0, 0.8.1 and 0.8.1 respectively, so
   `splicescope --version` reported a release three versions old.
 
+### Fixed (statistics and biology)
+- **Samples in neither group inflated the likelihood-ratio test without bound.** `lrt`
+  fitted the null over every valid sample but the alternative over the two groups only,
+  so the two hypotheses were not fitted to the same observations and the whole likelihood
+  of the ungrouped samples was charged to the null. Adding six samples that belong to
+  neither group moved an unchanged 3-vs-3 comparison from **p = 1.6e-09 to p = 9.7e-93**,
+  with `n_a` and `n_b` still reported as 3 and 3. Samples outside both groups now take no
+  part. This is not exotic: an SJ directory routinely holds more samples than a given
+  contrast lists, which `run` now also warns about.
+- **An in-frame exon truncation was reported as a premature stop.** Removing a whole
+  number of codons leaves the downstream reading frame untouched, so the first in-frame
+  stop found is the transcript's *own* — reported as `ptc_escape` with a PTC offset. On the
+  demo genome, deletions of 3, 6, 9 and 30 nt all returned the identical offset 296, which
+  is the annotated stop codon. A stop at or beyond where the protein natively ends is no
+  longer called premature; these are `exon_truncation`, and frameshifting truncations still
+  report their genuinely premature stops.
+- **GTF phase was discarded, so every 5'-incomplete CDS was translated in the wrong
+  frame.** GENCODE marks these `cds_start_NF` and gives the first CDS record a non-zero
+  phase; `load_transcripts` ignored column 8 entirely. `Transcript.cds_phase` now carries
+  it — taken from the first block in *transcription* order, so the minus strand is right —
+  and `Transcript.frame_at` applies it wherever frame is inherited.
+
 ### Fixed (Nextflow)
 - **The pipeline's real-data mode could not have worked.** One channel was passed for all
   three inputs, and the process script then looked for `<sj_dir>/sj`,

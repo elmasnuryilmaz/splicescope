@@ -273,10 +273,11 @@ scoring gene sets biased toward the large genes:
 
 | | sets called at p ≤ 0.05 | at p ≤ 1e-6 | median p |
 |---|---:|---:|---:|
-| plain hypergeometric | **100 %** | 52 % | 0.000 |
-| opportunity-weighted | **1.9 %** | 0 % | 0.62 |
+| plain hypergeometric | **99.4 %** | 54.0 % | 0.000 |
+| opportunity-weighted | **1.9 %** | 0.0 % | 0.60 |
 
-(480 biologically null gene sets over 12 simulated universes of 2,000 genes.)
+480 biologically null gene sets over 12 simulated universes of 2,000 genes. Reproduce with
+[`validation/ora_bias_calibration.py`](../validation/ora_bias_calibration.py).
 
 `enrich_differential` therefore weights by default. Genes are binned by the number of
 units tested in them, each bin's observed hit rate `p` becomes its members' selection

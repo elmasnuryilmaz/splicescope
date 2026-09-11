@@ -12,12 +12,14 @@ All notable changes to this project are documented here. The format is based on
   it has tested junctions, so long many-exon genes are over-represented among the hits for
   reasons that are not biological. Uncorrected this is catastrophic rather than mild: on
   480 biologically null gene sets whose hits were drawn *purely* in proportion to unit
-  count, the plain test called **100 %** of them at p ≤ 0.05 and 52 % at p ≤ 1e-6. Genes
+  count, the plain test called **99.4 %** of them at p ≤ 0.05 and 54 % at p ≤ 1e-6
+  (`validation/ora_bias_calibration.py` reproduces it). Genes
   are now binned by unit count, each bin's observed hit rate becomes its members'
   propensity, and the p-value comes from Wallenius' non-central hypergeometric with
   odds = (mean of `p/(1-p)` inside the set) / (mean outside) — `goseq`'s device applied to
   junction count instead of transcript length. The same simulation then gives **1.9 %** at
-  p ≤ 0.05 and 0 % at p ≤ 1e-6. `bias_odds` reports the odds per set and
+  p ≤ 0.05 and 0 % at p ≤ 1e-6. Tied weights share a bin, so a gene's propensity cannot
+  depend on its name. `bias_odds` reports the odds per set and
   `weight_by_units=False` restores the plain test, which Wallenius equals at odds 1.
   One deliberate departure from `goseq`: it averages probabilities where this averages
   odds. They agree while `p` is small, but a propensity here reaches 0.5, and at identical

@@ -16,7 +16,6 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Mapping, Sequence
 
-import numpy as np
 import pandas as pd
 from scipy import stats
 
@@ -77,12 +76,30 @@ def selection_propensity(
     if not bg:
         return {}
     baseline = len(hit_set & set(bg)) / len(bg)
-    ordered = sorted(bg, key=lambda g: (weights.get(g, 0.0), g))
-    chunks = np.array_split(np.array(ordered, dtype=object), min(bins, len(ordered)))
+
+    # Bin by weight, never splitting a tied group. Most genes contribute exactly one
+    # tested unit, so a plain equal-count split would cut that block at an arbitrary
+    # point and two genes with identical opportunity would get different propensities
+    # according to their names.
+    by_weight: dict[float, list[str]] = {}
+    for gene in bg:
+        by_weight.setdefault(float(weights.get(gene, 0.0)), []).append(gene)
+    target = max(1, len(bg) // max(1, bins))
+    chunks, current = [], []
+    for weight in sorted(by_weight):
+        current.extend(by_weight[weight])
+        if len(current) >= target:
+            chunks.append(current)
+            current = []
+    if current:
+        # Its own bin, never folded into the previous one. A single large tied group can
+        # fill a bin on its own — most genes contribute exactly one unit — and folding the
+        # remainder into it would put the highest-opportunity genes in the same bin as the
+        # lowest, which is the distinction this whole estimate exists to make.
+        chunks.append(current)
 
     propensity: dict[str, float] = {}
-    for chunk in chunks:
-        members = list(chunk)
+    for members in chunks:
         if not members:
             continue
         rate = sum(1 for g in members if g in hit_set) / len(members)

@@ -341,10 +341,8 @@ def test_every_injected_mxe_event_is_recovered():
             (r.exonA_start, r.exonA_end, r.exonB_start, r.exonB_end)
             for r in events.itertuples(index=False)
         }
-        missing = injected - found
-        # not every known intron gets an MXE injected, so compare against what did
-        assert len(missing) == len(injected) - len(injected & found)
-        assert injected & found, f"seed {seed} recovered no injected pair"
+        # `injected` is every candidate geometry the simulator *could* have used; only
+        # the genes it actually chose carry one, so this is a floor, not a recall rate.
         recovered = len(injected & found)
         assert recovered >= 55, f"seed {seed} recovered only {recovered} of the injected pairs"
 

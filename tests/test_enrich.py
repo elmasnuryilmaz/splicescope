@@ -478,3 +478,23 @@ def test_two_spellings_of_one_gene_have_their_opportunity_added_up(monkeypatch):
 
     enrich.over_representation(genes[:10], genes, {"S": genes[:8]}, weights=weights)
     assert seen["ENSG00000000000"] == 50.0, "the two spellings were not added up"
+
+
+def test_the_weighted_test_reduces_to_the_plain_one_when_no_gene_is_favoured():
+    """Wallenius' distribution at odds 1 *is* the hypergeometric, so giving every gene
+    the same opportunity must reproduce the uncorrected p-value exactly. That identity
+    is also the only thing that pins the tail convention on the weighted branch: the
+    plain branch had a test for using `sf(k-1)` rather than `sf(k)`, and the weighted
+    one did not."""
+    genes = [f"G{i:04d}" for i in range(120)]
+    hits = genes[:30]
+    sets = {"S1": genes[:20], "S2": genes[10:40], "S3": genes[60:100]}
+
+    plain = over_representation(hits, genes, sets).set_index("term")
+    flat = over_representation(hits, genes, sets, weights=dict.fromkeys(genes, 3.0))
+    flat = flat.set_index("term")
+
+    assert set(flat.index) == set(plain.index)
+    for term in plain.index:
+        assert flat.loc[term, "bias_odds"] == pytest.approx(1.0), term
+        assert flat.loc[term, "pvalue"] == pytest.approx(plain.loc[term, "pvalue"], rel=1e-6), term

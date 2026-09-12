@@ -168,3 +168,32 @@ def test_digit_only_sample_names_are_labels_not_numbers(tmp_path, names):
     assert rc == 0
     result = pd.read_csv(out / "differential_splicing.tsv", sep="\t")
     assert not result.empty, "a consistently named numeric cohort must produce results"
+
+
+def test_stars_strand_and_motif_codes_are_read_as_star_writes_them(tmp_path):
+    """Column 4 of SJ.out.tab is 0, 1 or 2, and 0 means STAR could not tell — which is
+    routine for non-canonical junctions, and the reason `resolve_unstranded` exists.
+    Reading 0 as "+" would silently invent a strand for every one of them, place them
+    against the wrong half of the annotation, and leave nothing to resolve. Nothing in
+    the suite read a real SJ.out.tab and checked the mapping.
+    """
+    import pandas as pd
+
+    from splicescope.io import read_star_sj
+
+    # chrom start end strand motif annotated n_unique n_multi overhang
+    path = Path(tmp_path) / "S1.SJ.out.tab"
+    path.write_text(
+        "chr1\t100\t200\t1\t1\t1\t30\t2\t40\n"   # + strand, GT/AG
+        "chr1\t300\t400\t2\t2\t1\t25\t0\t38\n"   # - strand, CT/AC
+        "chr1\t500\t600\t0\t0\t0\t7\t1\t20\n"    # strand unknown, non-canonical
+        "chr1\t700\t800\t1\t3\t0\t9\t0\t22\n"    # + strand, GC/AG
+    )
+    df = read_star_sj(path)
+
+    assert list(df["strand"]) == ["+", "-", ".", "+"]
+    assert list(df["motif"]) == ["GT/AG", "CT/AC", "non-canonical", "GC/AG"]
+    # `count` is the uniquely-mapping reads, not the total
+    assert list(df["count"]) == [30, 25, 7, 9]
+    assert list(df["sample"]) == ["S1"] * 4
+    assert pd.api.types.is_integer_dtype(df["count"])

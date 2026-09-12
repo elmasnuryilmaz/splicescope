@@ -196,3 +196,41 @@ def test_a_grouping_key_the_table_does_not_have_is_named_in_the_error():
     psi = _small_psi()
     with pytest.raises(ValueError, match=r"event_id"):
         differential_splicing(psi, GROUPS, key=["event_id"])
+
+
+def test_a_site_with_exactly_min_reads_is_kept_not_dropped():
+    """`min_reads` is the coverage a splice site needs before Psi means anything, so a
+    site carrying exactly that many reads is measured, not withheld. The boundary was
+    not pinned, and this filter has been wrong before — it was inert on the default code
+    path until 0.9.0."""
+    rows = [_junction(100, 199, s, c) for s, c in zip(SAMPLES, [6, 6, 6, 6, 6, 6], strict=True)]
+    rows += [_junction(100, 299, s, c) for s, c in zip(SAMPLES, [4, 4, 4, 4, 4, 4], strict=True)]
+    obs = pd.DataFrame(rows)  # every donor site totals exactly 10
+
+    at_threshold = compute_psi(obs, min_reads=10)
+    assert at_threshold["psi_donor"].notna().all(), "10 reads is not fewer than 10"
+    assert at_threshold["donor_total"].eq(10).all()
+
+    just_above = compute_psi(obs, min_reads=11)
+    assert just_above["psi_donor"].isna().all(), "11 is more than the site has"
+
+
+def test_a_zero_is_filled_from_whichever_site_was_covered():
+    """The rule is that a junction gets its measured zero where *either* of its splice
+    sites has reads in that sample, because either one gives Psi a denominator. Filling
+    only from the donor loses every junction whose acceptor was the covered end — half
+    the cases, and on the minus strand the other half."""
+    shared_acceptor = [
+        _junction(100, 300, "C1", 30),   # only C1 uses this junction
+        _junction(200, 300, "C1", 10),   # shares its acceptor, 300
+        _junction(200, 300, "K1", 40),   # K1 covers the acceptor but nothing at donor 100
+    ]
+    filled = add_unobserved_zeros(compute_psi(pd.DataFrame(shared_acceptor), fill_unobserved=False))
+    added = filled[(filled["start"] == 100) & (filled["sample"] == "K1")]
+    assert len(added) == 1, "the junction's acceptor had reads in K1, so its zero is measurable"
+    assert added["count"].iloc[0] == 0
+
+    psi = compute_psi(pd.DataFrame(shared_acceptor))
+    row = psi[(psi["start"] == 100) & (psi["sample"] == "K1")]
+    assert row["psi_acceptor"].iloc[0] == 0.0
+    assert row["acceptor_total"].iloc[0] == 40.0

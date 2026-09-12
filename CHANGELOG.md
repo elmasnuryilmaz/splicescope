@@ -48,10 +48,30 @@ All notable changes to this project are documented here. The format is based on
   what the previous code produced.
 
 ### Added
-- **Seven tests for the rules the suite was not checking.** Found by mutation: change a
-  line, run the suite, see whether anything fails. Twenty-one deliberate defects were
-  introduced across the consequence and statistics modules and **nine of them passed all
-  165 tests**. Two mutants turned out to be harmless (a shorter slice can never equal a
+- **Eleven tests for the rules the suite was not checking.** Found by mutation: change
+  a line, run the suite, see whether anything fails. Thirty-seven deliberate defects were
+  introduced across every module and **thirteen of them passed all 165 tests**. Two are
+  harmless by construction (a slice shorter than three characters can never equal a stop
+  codon; a negative chi-square statistic yields the same p-value of 1) and the other
+  eleven are now each pinned by a test. Four of them were outside the consequence and
+  statistics modules:
+
+  - **The coverage boundary.** A splice site carrying exactly `min_reads` reads is
+    measured, not withheld, and making the comparison inclusive broke nothing. This
+    filter was already inert on the default code path until 0.9.0.
+  - **Which site a measured zero comes from.** A junction gets its zero where *either*
+    of its splice sites has reads in that sample; filling only from the donor loses every
+    junction whose acceptor was the covered end, and on the minus strand the other half.
+  - **STAR's strand codes.** Column 4 of `SJ.out.tab` is 0, 1 or 2, and 0 means STAR
+    could not tell. Reading 0 as `+` invents a strand for every non-canonical junction
+    and leaves `resolve_unstranded` nothing to resolve. No test had read a real
+    `SJ.out.tab` and checked the mapping.
+  - **The weighted tail.** The plain branch had a test for summing from `k-1` rather
+    than `k`; the weighted branch did not. Wallenius' distribution at odds 1 *is* the
+    hypergeometric, so giving every gene the same opportunity now has to reproduce the
+    uncorrected p-value exactly.
+
+  The seven in the consequence and statistics modules: Two mutants turned out to be harmless (a shorter slice can never equal a
   three-character stop codon; a negative chi-square statistic gives the same p-value of
   1), and the rest were real gaps, now closed:
 

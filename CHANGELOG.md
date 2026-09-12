@@ -64,6 +64,14 @@ All notable changes to this project are documented here. The format is based on
   the three-a-side design METHODS §5.1 is about, it is the difference between **32 of 44
   events called and none at all**.
 
+- **Property tests for the day's new code.** The guards and the sentence generator are
+  the least battle-tested things here, so they get generators rather than examples:
+  `describe` must be a sentence for any combination of fields a row can carry and must
+  never reach its catch-all; the annotation check must object to a naming mismatch and to
+  nothing else, checked against every pair of chromosome sets; and the genome check must
+  accept any contig long enough, however much longer. The first of them found the bug
+  below on its first run.
+
 - **`docs/nmd_rule.gif`: the 50-nucleotide rule, animated.** A premature stop codon
   walks towards the last exon-exon junction and the prediction flips exactly once, where
   the rule says it does. That threshold is the whole of what this toolkit predicts about
@@ -319,6 +327,13 @@ All notable changes to this project are documented here. The format is based on
   before it failed none.
 
 ### Fixed
+- **`describe` raised on a premature stop with no recorded distance.** Found by a
+  property test over every combination of the fields a row can carry. The `ptc_escape`
+  branch handled a missing distance — the last-exon case, where there is no junction
+  downstream for the stop to be upstream of — and the `ptc_nmd` branch did not, so
+  `int(None)` raised a `TypeError` from the middle of a sentence. A row reaches this
+  function from a `consequence.tsv` read back with pandas as readily as from the
+  pipeline, and an empty cell there is a NaN.
 - **A coverage threshold nothing can meet says so.** `--min-reads 100000` printed "0
   significant junctions" and stopped, which reads as *no differential splicing* — a
   conclusion. Not one unit was testable: Ψ is NaN wherever a splice site carries fewer

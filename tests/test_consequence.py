@@ -752,3 +752,23 @@ def test_a_frameshift_with_no_stop_before_the_protein_s_own_end(tmp_path):
     assert call.frameshift and call.insert_length % 3 != 0
     assert call.ptc_offset is None and not call.nmd_predicted
     assert "no stop codon appears" in describe(call)
+
+
+@pytest.mark.parametrize("kind", ["ptc_nmd", "ptc_escape"])
+def test_a_premature_stop_with_no_recorded_distance_is_still_described(kind):
+    """Found by a property test. `ptc_escape` handled a missing distance — the last-exon
+    case, where there is no junction downstream to be upstream of — and `ptc_nmd` did
+    not, so `int(None)` raised. A row reaches `describe` from a `consequence.tsv` read
+    back with pandas as readily as from the pipeline, and an empty cell is a NaN."""
+    from splicescope.consequence import describe
+
+    sentence = describe(
+        {
+            "consequence_class": kind, "insert_length": 61, "frameshift": True,
+            "ptc_offset": 104, "distance_to_last_junction": None,
+            "nmd_predicted": kind == "ptc_nmd",
+        }
+    )
+    assert "final exon" in sentence
+    assert "no exon-exon junction downstream" in sentence
+    assert "None" not in sentence and sentence.endswith(".")

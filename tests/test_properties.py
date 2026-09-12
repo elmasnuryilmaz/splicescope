@@ -13,14 +13,21 @@ So: real generators, and the invariants that have to hold whatever they produce.
 from __future__ import annotations
 
 import warnings
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 
-from splicescope.annotate import CLASSES, annotate_junctions
-from splicescope.consequence import Transcript, find_ptc, reverse_complement
+from splicescope.annotate import CLASSES, _check_annotation, annotate_junctions
+from splicescope.consequence import (
+    CONSEQUENCE_CLASSES,
+    Transcript,
+    describe,
+    find_ptc,
+    reverse_complement,
+)
 from splicescope.diff import benjamini_hochberg
 from splicescope.enrich import normalize_gene_id
 from splicescope.events import detect_events
@@ -350,3 +357,85 @@ def test_a_locus_on_another_chromosome_changes_nothing(observed, known, spare):
     for column in ("event_type", "skip_start", "skip_end", "site_pos", "n_alternatives"):
         if column in original:
             assert kept[column].equals(original[column]), column
+
+
+@given(
+    st.sampled_from(sorted(CONSEQUENCE_CLASSES)),
+    st.integers(min_value=-4000, max_value=4000),
+    st.booleans(),
+    st.one_of(st.none(), st.integers(min_value=0, max_value=6000)),
+    st.one_of(st.none(), st.integers(min_value=-3000, max_value=6000)),
+    st.booleans(),
+)
+def test_describing_a_consequence_never_raises_and_never_says_nothing(
+    kind, length, frameshift, ptc_offset, distance, nmd
+):
+    """`describe` is read by people, from a row that may carry anything the pipeline can
+    produce: a negative insert length for a truncation, a missing PTC offset, a missing
+    distance where the stop is in the final exon. It has to be a sentence whatever the
+    combination — and never the catch-all, which exists only for a class added later."""
+    row = {
+        "consequence_class": kind, "insert_length": length, "frameshift": frameshift,
+        "ptc_offset": ptc_offset, "distance_to_last_junction": distance,
+        "nmd_predicted": nmd,
+    }
+    sentence = describe(row)
+    assert sentence.endswith(".") and sentence[0].isupper()
+    assert "None" not in sentence and "nan" not in sentence
+    assert "does not name" not in sentence, f"{kind} fell through to the catch-all"
+    assert str(abs(length)) in sentence or kind in {"no_host_transcript"}
+
+
+@given(
+    st.lists(CHROMS, min_size=1, max_size=4, unique=True),
+    st.lists(CHROMS, min_size=1, max_size=4, unique=True),
+)
+@SLOW
+def test_the_annotation_check_only_objects_to_a_naming_mismatch(seen, annotated):
+    """It must not fire for a junction on a contig the annotation does not cover, which
+    is ordinary, and it must fire whenever the two name the same chromosomes differently,
+    which is a mistake. Those are the only two cases."""
+    observed = pd.DataFrame(
+        [dict(chrom=c, start=200, end=399, strand="+", sample="s1", count=10) for c in seen]
+    )
+    known = pd.DataFrame(
+        [dict(chrom=c, start=200, end=399, strand="+", gene_id="G") for c in annotated]
+    )
+    try:
+        _check_annotation(observed, known)
+        objected = False
+    except ValueError:
+        objected = True
+
+    def bare(names):
+        return {n[3:] if n.lower().startswith("chr") else n for n in names}
+
+    shares_a_name = bool(set(seen) & set(annotated))
+    only_the_prefix_differs = not shares_a_name and bool(bare(seen) & bare(annotated))
+    assert objected == only_the_prefix_differs, (
+        f"seen={seen} annotated={annotated}: objected={objected}"
+    )
+
+
+@given(st.integers(min_value=1, max_value=5_000), st.integers(min_value=1, max_value=5_000))
+def test_the_genome_check_accepts_any_contig_long_enough(reach, slack):
+    """A genome larger than the analysis needs is nobody's mistake, and the check must
+    say nothing about it however much larger."""
+    import tempfile
+
+    from splicescope.consequence import GenomeFasta, Transcript, check_genome
+
+    length = reach + slack
+    with tempfile.TemporaryDirectory() as tmp:
+        fasta = Path(tmp) / "g.fa"
+        fasta.write_text(">chr1\n" + "A" * length + "\n")
+        fasta.with_suffix(".fa.fai").write_text(f"chr1\t{length}\t6\t{length}\t{length + 1}\n")
+        tx = {
+            "T": Transcript(
+                transcript_id="T", gene_id="G", gene_name="G", chrom="chr1", strand="+",
+                exons=[(1, 10)], cds=[(1, 10)],
+            )
+        }
+        events = pd.DataFrame([dict(chrom="chr1", start=1, end=reach, strand="+")])
+        with GenomeFasta(fasta) as genome:
+            check_genome(events, tx, genome)  # must not raise

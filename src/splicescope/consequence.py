@@ -949,6 +949,20 @@ def describe(row) -> str:
     if offset is not None:
         unit = "nucleotide" if offset == 1 else "nucleotides"
         where = f" {int(offset)} {unit} in"
+    if distance is None and kind in (PTC_NMD, PTC_ESCAPE):
+        # No last junction downstream means the stop is in the final exon, which is why
+        # the distance does not exist. A row can also arrive that way from a TSV read
+        # back with an empty cell, so this says what is known rather than inventing it.
+        outcome = (
+            "decay is predicted anyway" if kind == PTC_NMD
+            else "decay needs one, so the transcript survives and a truncated protein is "
+            "made instead"
+        )
+        return (
+            f"{verb} these {span} {noun}{frame} the first premature stop codon appears"
+            f"{where} — in the final exon, with no exon-exon junction downstream of it. "
+            f"{outcome[0].upper()}{outcome[1:]}."
+        )
     if kind == PTC_NMD:
         return (
             f"{verb} these {span} {noun}{frame} the first premature stop codon appears"
@@ -958,14 +972,6 @@ def describe(row) -> str:
             "nonsense-mediated decay is predicted to degrade the transcript."
         )
     if kind == PTC_ESCAPE:
-        if distance is None:
-            # the last-exon exception: decay needs a junction downstream of the stop
-            return (
-                f"{verb} these {span} {noun}{frame} the first premature stop codon "
-                f"appears{where} — in the final exon, with no exon-exon junction "
-                "downstream of it. Decay needs one, so the transcript survives and a "
-                "truncated protein is made instead."
-            )
         return (
             f"{verb} these {span} {noun}{frame} the first premature stop codon appears"
             f"{where}. It sits only {int(distance)} nucleotides before the last exon-exon "

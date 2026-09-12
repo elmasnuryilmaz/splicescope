@@ -55,6 +55,16 @@ All notable changes to this project are documented here. The format is based on
   what the previous code produced.
 
 ### Added
+- **The showcase figure shows what the events do to the protein.** Six panels, and two
+  of them were the classifier — which METHODS §7.1 is explicit is the weakest part of
+  this toolkit, worth an order of magnitude less than the statistic when measured against
+  replication in an independent experiment. The protein consequence, which is the part
+  nothing else in the figure says, was absent. It now replaces the permutation-importance
+  panel, so the front page shows a premature stop and whether it is far enough from the
+  last junction to trigger decay. The generator writes the simulated data out and reads
+  it back through the same reader a real run uses, so the figure comes from the code a
+  user would run rather than from a shortcut.
+
 - **The dashboard answers a question instead of redrawing charts.** It used to be a
   simulator with sliders: move one, the data is regenerated, the charts change. That
   demonstrates that the code runs, not what it is for — and the tool's most distinctive

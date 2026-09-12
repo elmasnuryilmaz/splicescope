@@ -26,8 +26,10 @@ private data** — which is also what the test suite and CI use.
 ![splicescope showcase](docs/showcase.png)
 
 *One reproducible command produces every panel above: junction classes, a ΔΨ volcano,
-splicing events by type (SE / MXE / A5SS / A3SS), differential exon inclusion, what the
-cryptic classifier keys on, and its cross-validated ROC.*
+splicing events by type (SE / MXE / A5SS / A3SS), differential exon inclusion, **what
+including those exons does to the protein** — a premature stop, and whether it is far
+enough from the last junction to trigger nonsense-mediated decay — and the cryptic
+classifier's cross-validated ROC.*
 
 And the classifier degrades **gracefully** as labelling error grows — an honest robustness
 check rather than a single lucky number:

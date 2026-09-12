@@ -16,6 +16,7 @@ Public API
 - :func:`splicescope.ml.CrypticClassifier` – learn to separate cryptic events from noise
 - :func:`splicescope.enrich.enrich_differential` – pathway over-representation (ORA)
 - :func:`splicescope.simulate.simulate_dataset` – synthetic ground-truth data
+- :func:`splicescope.demo.run_demo`          – all of the above in one call
 """
 
 from __future__ import annotations

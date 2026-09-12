@@ -7,6 +7,13 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Changed
+- **The executed tutorial and both figures in `docs/` are regenerated.** They are built
+  from the simulator, whose draw order changed when an intron stopped being allowed to
+  hold two events, so their committed outputs no longer matched what the code produces —
+  the notebook reported 43 significant junctions where the current code finds 46. The
+  junction *count* was identical either way (198 both times, coincidentally), which is
+  why nothing looked wrong. `examples/tutorial.ipynb`, `docs/showcase.png` and
+  `docs/demo.gif` are rebuilt; the analysis behind them is unchanged.
 - **The weighted ORA is 14× faster, and gives the same answers.** `p/(1-p)` does not
   depend on which gene set is being tested, but it was being recomputed for every
   background gene for every set: one division per (gene × set), 95.7 million of them on a
@@ -48,6 +55,26 @@ All notable changes to this project are documented here. The format is based on
   what the previous code produced.
 
 ### Added
+- **A `docs` extra, so the executed tutorial can actually be re-executed.** Rebuilding
+  `examples/tutorial.ipynb` and the figures in `docs/` needs `nbformat`, `nbclient`,
+  `ipykernel` and `pillow`, and none of them was declared anywhere. A notebook advertised
+  as reproducible needs the tools that reproduce it to be installable: `pip install -e
+  ".[docs]"`.
+- **The version check covers the README's citation.** It compared `__version__` against
+  `CITATION.cff` and the CHANGELOG but not against the citation a reader copies, which is
+  why that one sat at v0.8.1 through two releases.
+
+- **`splicescope.demo.run_demo`, and the dashboard rendered in CI.** The README's first
+  badge is a live Streamlit demo, which makes a broken dashboard the most visible failure
+  this repository has — and its analysis had no test at all, so a change to any signature
+  it touched would have appeared as a traceback on a public page rather than as a red
+  build. The analysis now lives in the package as one function, the page is presentation
+  only, and both are covered: `tests/test_demo.py` sweeps the sixteen corners of the
+  slider ranges the page exposes, and `tests/test_dashboard.py` renders the real page
+  through Streamlit's own headless harness. A `dashboard` job in CI installs the `app`
+  extra and runs it. `run_demo` is also the shortest way to run the whole pipeline on
+  synthetic data from Python.
+
 - **Sixteen tests for the consequence layer on the minus strand.** Every coordinate in
   that module means something different depending on the strand: donor and acceptor swap
   ends, exons are walked in decreasing genomic order, coding length accumulates
@@ -167,6 +194,26 @@ All notable changes to this project are documented here. The format is based on
   before it failed none.
 
 ### Fixed
+- **The limitations section denied a feature the README advertises.** METHODS §9 said Ψ
+  here is splice-site usage "not event-level PSI (cassette exon, A5SS/A3SS, IR)", while
+  §5b specifies event-level PSI, `detect_events` returns all four classes and the
+  README's second paragraph leads with them. The one class genuinely out of reach is
+  intron retention, for the reason §5b already gives: it is defined by reads *inside* the
+  intron, which junction counts do not carry. The same stale sentence was in the README.
+- **The README's suggested citation named v0.8.1** while the package was 0.9.1.
+- METHODS had a subsection numbered 7c sitting above section 7b; it is a subsection of 7
+  and is now numbered as one, matching 5.1-5.4.
+- **Four of the dashboard's sixteen slider corners crashed it.** Every one had the
+  cryptic-event fraction at its minimum and the label noise at zero, which is a
+  reasonable thing for a reader to ask for and which leaves every junction in one class.
+  `np.bincount` cannot see a class that is entirely absent — for all-zero labels it
+  returns a single bin — so the fold-count guard in `evaluate` passed, the forest fitted
+  a one-class model, and `predict_proba` raised `IndexError: index 1 is out of bounds for
+  axis 1 with size 1` from far away from the cause. The asymmetry hid it: all-positive
+  labels happened to be caught, all-negative ones were not. Both `fit` and `evaluate`
+  now refuse a single-class label vector in a sentence that names the problem, and the
+  dashboard skips the classifier and says which slider to move instead of showing a
+  traceback. The junction classes and the differential results are still drawn.
 - **The model card could describe a model that was never fitted.** Its `class_weight` was
   the string `"balanced"` written into the card's own source rather than read from the
   estimator, so removing the weighting from the pipeline left the card still claiming it.

@@ -8,13 +8,13 @@ a rule the suite is not checking, and it is free to come back in the next refact
 
 Every mutation below was written as a realistic mistake rather than a random edit — an
 inclusive comparison where it should be strict, a distance measured from the wrong end of
-a codon, a correction applied to the wrong array. Twenty-eight of these passed the suite
+a codon, a correction applied to the wrong array. Twenty-nine of these passed the suite
 as it stood when each was first tried: the 50-nucleotide rule the tool is built on, the
 last-exon exception, whether the reported q-value is Benjamini-Hochberg-adjusted at all,
-seven of the eight features the cryptic-junction classifier learns from, and three
-defects reachable only from the minus strand, which the consequence layer was hardly
-tested on. Three of the twenty-eight are equivalent mutants; the other twenty-five are
-now each pinned by a test.
+seven of the eight features the cryptic-junction classifier learns from, three defects
+reachable only from the minus strand, and a guard that could not see a class that was
+entirely absent. Three of the twenty-nine are equivalent mutants; the other twenty-six
+are now each pinned by a test.
 
 Three mutants survive and are expected to: they are equivalent, not uncaught.
 
@@ -273,6 +273,12 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
     ("ml", "score table sorted least-likely first",
      'return out.sort_values("cryptic_score", ascending=False)[',
      'return out.sort_values("cryptic_score", ascending=True)[', "caught"),
+    ("ml", "a single-class label vector accepted",
+     "        _require_two_classes(y)\n", "", "caught"),
+    # ---- demo: the analysis the dashboard runs --------------------------------------
+    ("demo", "the classifier attempted on a one-class dataset",
+     "    if labels is None or labels.nunique() < 2:",
+     "    if labels is None or labels.nunique() < 1:", "caught"),
     # ---- cli ------------------------------------------------------------------------
     ("cli", "splice-site shifts restricted to one of the two classes",
      'SHIFT_CLASSES = ("novel_donor", "novel_acceptor")',

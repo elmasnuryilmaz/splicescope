@@ -27,6 +27,27 @@ from .cryptic import FEATURE_COLUMNS
 TRUTH_COLUMN = "is_cryptic_truth"
 
 
+def _require_two_classes(y: np.ndarray) -> None:
+    """Refuse a label vector with only one class in it.
+
+    Counting with ``np.bincount`` cannot see a class that is entirely absent: for labels
+    that are all zero it returns a single bin, so a check on its minimum passes and the
+    forest goes on to fit a one-class model. ``predict_proba`` then returns one column
+    and indexing the second raises ``IndexError`` somewhere far from the cause. The
+    asymmetry made it worse — all-positive labels happened to be caught, all-negative
+    ones were not.
+    """
+    present = np.unique(y)
+    if len(present) >= 2:
+        return
+    only = "cryptic" if len(present) and present[0] == 1 else "not cryptic"
+    raise ValueError(
+        f"all {len(y)} junctions are labelled '{only}', so there are no two classes to "
+        "separate. Nothing can be learned or scored from this; widen the dataset until "
+        "both classes appear."
+    )
+
+
 @dataclass
 class CrypticClassifier:
     """A cross-validated classifier for cryptic-junction calling."""
@@ -63,6 +84,7 @@ class CrypticClassifier:
         x = feats[self.features].to_numpy(dtype=float)
         x = np.nan_to_num(x, nan=0.0)
         y = feats[TRUTH_COLUMN].to_numpy(dtype=int)
+        _require_two_classes(y)
         return x, y
 
     def evaluate(self, feats: pd.DataFrame) -> dict:
@@ -70,7 +92,10 @@ class CrypticClassifier:
         x, y = self._xy(feats)
         n_splits = min(self.n_splits, int(np.bincount(y).min()))
         if n_splits < 2:
-            raise ValueError("need at least 2 examples of each class for cross-validation")
+            raise ValueError(
+                f"cross-validation needs at least 2 examples of each class; the rarer one "
+                f"has {int(np.bincount(y).min())}"
+            )
         cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=self.random_state)
         proba = cross_val_predict(
             self._make_pipeline(), x, y, cv=cv, method="predict_proba", n_jobs=None

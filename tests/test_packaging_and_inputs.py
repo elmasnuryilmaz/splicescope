@@ -38,6 +38,15 @@ def test_version_is_consistent_across_the_repository():
         f"CHANGELOG's newest release is {released[0]}, but __version__ is {version}"
     )
 
+    # The README carries the citation a reader will copy, and it was left at v0.8.1
+    # through two releases because nothing checked it.
+    readme = (ROOT / "README.md").read_text()
+    cited = re.findall(r"splice junctions\* \(v(\d+\.\d+\.\d+)\)", readme)
+    assert cited, "no version in the README's suggested citation"
+    assert cited == [version], (
+        f"the README cites {cited}, but __version__ is {version}"
+    )
+
 
 def test_pyproject_reads_the_version_from_the_package():
     """A literal version in pyproject.toml is a second source of truth, and it drifted."""

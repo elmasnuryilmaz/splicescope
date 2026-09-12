@@ -152,20 +152,24 @@ rather than only asserted.
 - **`app/streamlit_app.py`** — an interactive dashboard to browse junction classes,
   the volcano and ranked cryptic candidates (`pip install -e ".[app]"` then
   `streamlit run app/streamlit_app.py`). Deploy-ready for Streamlit Community Cloud —
-  point it at `app/streamlit_app.py`.
+  point it at `app/streamlit_app.py`. The analysis behind it is
+  `splicescope.demo.run_demo`, which is also the shortest way to run the whole pipeline
+  on synthetic data from Python; the page itself is presentation only, and CI renders it
+  headlessly on every push.
 
 ## Testing
 
 ```bash
-pytest            # 207 tests: unit + property + end-to-end CLI runs
+pytest            # 230 tests: unit + property + end-to-end CLI runs
 ruff check .      # lint
 ```
 
 CI runs the suite and the linter on every push, plus the Nextflow pipeline on all three
-of its input paths (see the badge above).
+of its input paths and a headless render of the Streamlit dashboard (see the badge
+above).
 
 A green suite says the tests pass, not that they would fail if the code broke. So the
-code is deliberately broken 83 ways and the suite has to notice:
+code is deliberately broken 85 ways and the suite has to notice:
 
 ```bash
 python validation/mutation_survey.py
@@ -174,12 +178,12 @@ python validation/mutation_survey.py
 Each mutation is a mistake someone could plausibly make — an inclusive comparison where
 it should be strict, a distance measured from the wrong end of a codon, a correction
 applied to the wrong array — and the script reports any the suite fails to catch.
-**28 of these passed the suite** as it stood when each was first tried: the
+**29 of these passed the suite** as it stood when each was first tried: the
 50-nucleotide rule this tool's NMD calls rest on, the last-exon exception, whether the
 reported q-value was Benjamini-Hochberg-adjusted at all, seven of the eight features the
 cryptic-junction classifier learns from, and three defects reachable only from the minus
-strand. Three of the 28 are equivalent mutants that provably cannot change any answer,
-and the script says which and why; the other 25 are now each pinned by a test. It also
+strand. Three of the 29 are equivalent mutants that provably cannot change any answer,
+and the script says which and why; the other 26 are now each pinned by a test. It also
 runs weekly in CI.
 
 ## The differential test
@@ -249,15 +253,17 @@ in [validation/README.md](validation/README.md).
 
 The classifier is a separate matter: its model card is explicit that it should be
 retrained on curated labels and validated on held-out genes before any real-data use.
-Ψ here is splice-site *usage*, a deliberately model-free proxy; event-level PSI (cassette
-exons, etc.) is a natural extension.
+Ψ here is splice-site *usage*, a deliberately model-free proxy; event-level PSI is
+reported alongside it for SE, MXE, A5SS and A3SS. Intron retention is the event class
+that is genuinely out of reach: it is measured from coverage *inside* the intron, which
+splice junctions do not carry.
 
 ## Cite
 
 If you use `splicescope` in your research, please cite it (see [`CITATION.cff`](CITATION.cff)):
 
 > Yılmaz, E. (2026). *splicescope: detecting and characterizing cryptic splicing from
-> splice junctions* (v0.8.1). Zenodo. https://doi.org/10.5281/zenodo.22287002
+> splice junctions* (v0.9.1). Zenodo. https://doi.org/10.5281/zenodo.22287002
 
 The DOI above is the **concept DOI**: it always resolves to the most recent release, so
 it stays correct as the software evolves. To cite this exact version instead, use

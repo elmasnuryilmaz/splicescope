@@ -33,6 +33,11 @@ dependencies = [
 [project.optional-dependencies]
 app = ["streamlit>=1.28"]
 dev = ["pytest>=7", "ruff>=0.1", "pytest-cov>=4"]
+# Rebuilding the executed tutorial and the figures in docs/. Separate from `dev` because
+# the test suite does not need a Jupyter kernel, and separate from nothing at all, which
+# is what these were before: the notebook is advertised as reproducible, so the tools
+# that reproduce it have to be installable.
+docs = ["nbformat>=5.9", "nbclient>=0.9", "ipykernel>=6.25", "pillow>=10"]
 
 [project.scripts]
 splicescope = "splicescope.cli:main"

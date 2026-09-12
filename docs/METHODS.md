@@ -230,7 +230,7 @@ hyper-parameters, the evaluation protocol, metrics, importances, intended use an
 limitations. Scaling is fit inside each CV fold via the pipeline, so there is no
 train/test leakage.
 
-### 7c. What the classifier is and is not for
+### 7.1 What the classifier is and is not for
 
 Its features (`intron_length`, `log_max_count`, `n_samples_support`, `mean_psi_donor`,
 `canonical_motif`, distance to the nearest known donor/acceptor, `is_novel_both`) describe
@@ -385,8 +385,10 @@ differential test.
 
 ## 9. Limitations
 
-- Ψ here is splice-site *usage*, not event-level PSI (cassette exon, A5SS/A3SS, IR); the
-  latter is a natural extension built on the same junction graph.
+- Ψ is splice-site *usage*; event-level PSI is reported beside it for the four
+  junction-quantifiable classes (§5b). Intron retention is not among them, for the reason
+  given there: it is defined by reads *inside* the intron, which junction counts do not
+  carry.
 - The bundled data is simulated. On real data the classifier must be retrained on curated
   labels and validated on **held-out genes** (not just held-out junctions) to avoid
   optimistic estimates from shared-gene leakage.

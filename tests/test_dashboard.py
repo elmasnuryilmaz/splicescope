@@ -70,3 +70,45 @@ def test_the_thresholds_change_the_significant_count_without_reanalysing():
     app.run()
     assert not app.exception, app.exception
     assert int(app.metric[1].value) >= strict
+
+
+def test_every_figure_the_page_draws_is_released():
+    """This is why the deployed app went over its memory limit.
+
+    `st.pyplot` does *not* close the figure it renders — its `clear_figure` default is
+    False — and `pyplot` keeps every figure in a global registry until something does.
+    A Streamlit script reruns on each widget change, so four figures accumulate per
+    slider move, without bound, against an analysis that costs 47 MB and imports that
+    cost 194.
+
+    The check is structural rather than a count, and deliberately so: `AppTest` runs the
+    script with its own module state, so the registry this process can see is not the one
+    the page uses. A test that counted `plt.get_fignums()` from here passed happily with
+    the leak reinstated, which is how this test came to be written this way.
+    """
+    import ast
+
+    tree = ast.parse(APP.read_text())
+    functions = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]
+
+    def calls(node, dotted):
+        owner, attr = dotted.split(".")
+        return [
+            c for c in ast.walk(node)
+            if isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)
+            and c.func.attr == attr
+            and isinstance(c.func.value, ast.Name) and c.func.value.id == owner
+        ]
+
+    renderers = [f for f in functions if calls(f, "st.pyplot")]
+    assert renderers, "no st.pyplot call found — has the page stopped drawing?"
+    for function in renderers:
+        assert calls(function, "plt.close"), (
+            f"{function.name}() renders a figure and never closes it"
+        )
+
+    # and nothing may render outside those functions, where no close would apply
+    inside = {id(c) for f in renderers for c in calls(f, "st.pyplot")}
+    assert all(id(c) in inside for c in calls(tree, "st.pyplot")), (
+        "a figure is rendered at module level, outside any function that closes it"
+    )

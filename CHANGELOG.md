@@ -255,6 +255,36 @@ All notable changes to this project are documented here. The format is based on
   before it failed none.
 
 ### Fixed
+- **The live demo was over its memory limit, and the README pointed at a dead URL.**
+  Two separate things. The badge and the personal site both linked to the
+  hash-generated address the app had before it moved to a custom subdomain, so the link
+  had been dead since the move; both now point at `splicescope.streamlit.app`. And the
+  app itself was answering *"This app has gone over its resource limits — it's using too
+  much memory"*.
+
+  The page renders four figures and `st.pyplot` does **not** close them: its
+  `clear_figure` default is `False`, and `pyplot` keeps every figure in a global
+  registry until something else does. A Streamlit script reruns on each widget change,
+  so the figures accumulate without bound. Measured against what does not grow:
+
+  | | RSS |
+  |---|---:|
+  | bare Python | 8 MB |
+  | + streamlit | 49 MB |
+  | + matplotlib, pandas, numpy, scikit-learn, scipy | 214 MB |
+  | + one analysis at the page's defaults | 255 MB |
+  | + a second at the slider maximum | 255 MB |
+  | leaked figures | +35 MB per 30 interactions, unbounded |
+
+  Every figure is now drawn through a helper that closes it in a `finally`, and the
+  cache is bounded (`max_entries`, `ttl`) rather than keeping one entry per slider
+  combination for the life of the container.
+
+  The test for this is structural — it parses the page and requires every `st.pyplot`
+  call to sit in a function that also closes — because a test that counted open figures
+  was written first and was useless: `AppTest` runs the script with its own module state,
+  so the registry the test process can see is not the one the page uses, and it passed
+  happily with the leak reinstated.
 - **A differential result with no rows had no columns.** Found by the first property test
   to run, which could not index the frame it got back. `differential_splicing` returned a
   bare `pd.DataFrame()` when no unit met `min_samples`, so the empty case had a different

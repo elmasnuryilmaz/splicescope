@@ -6,10 +6,10 @@
 [![CI](https://github.com/elmasnuryilmaz/splicescope/actions/workflows/ci.yml/badge.svg)](https://github.com/elmasnuryilmaz/splicescope/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
-[![Live demo](https://img.shields.io/badge/live%20demo-Streamlit-ff3d81)](https://splicescope-mirsdwuvkvwzvhrj2e2hgs.streamlit.app)
+[![Live demo](https://img.shields.io/badge/live%20demo-Streamlit-ff3d81)](https://splicescope.streamlit.app)
 [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/elmasnuryilmaz/splicescope/blob/main/examples/tutorial.ipynb)
 
-**▶ Try it live:** [splicescope on Streamlit](https://splicescope-mirsdwuvkvwzvhrj2e2hgs.streamlit.app) ·
+**▶ Try it live:** [splicescope on Streamlit](https://splicescope.streamlit.app) ·
 **📓 Guided tutorial:** [examples/tutorial.ipynb](examples/tutorial.ipynb) (executed, with outputs)
 
 Most of what we want to know about alternative and **cryptic** splicing is already
@@ -160,7 +160,7 @@ rather than only asserted.
 ## Testing
 
 ```bash
-pytest            # 267 tests: unit + property-based + end-to-end CLI runs
+pytest            # 268 tests: unit + property-based + end-to-end CLI runs
 ruff check .      # lint
 pytest --cov=splicescope   # 97 % of statements; CI fails below 90 %
 ```

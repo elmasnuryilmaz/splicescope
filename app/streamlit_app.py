@@ -48,7 +48,25 @@ with st.sidebar:
     delta_thr = st.slider("min |ΔΨ|", 0.0, 0.5, 0.1)
 
 
-@st.cache_data(show_spinner=True)
+def draw(figsize, plot):
+    """Render one figure and let go of it.
+
+    `pyplot` keeps every figure it makes in a global registry until something closes it,
+    and a Streamlit script reruns on every slider move. Left open, the four figures on
+    this page accumulate at about 35 MB per thirty interactions, with nothing to stop
+    them — which is how this app went over its memory limit on Community Cloud while the
+    analysis behind it costs 47 MB and the imports alone cost 194.
+    """
+    fig, ax = plt.subplots(figsize=figsize)
+    try:
+        plot(ax)
+        st.pyplot(fig)
+    finally:
+        plt.close(fig)
+
+
+# Bounded, so a session spent dragging sliders cannot grow the cache without limit.
+@st.cache_data(show_spinner=True, max_entries=12, ttl=3600)
 def analyse(n_genes, n_rep, cryptic_fraction, label_noise, seed):
     """Cached wrapper. Returns plain, serialisable pieces rather than the fitted model."""
     result = run_demo(
@@ -84,14 +102,13 @@ try:
     left, right = st.columns(2)
     with left:
         st.subheader("Junction classes")
-        fig, ax = plt.subplots(figsize=(5, 3.4))
-        plotting.plot_annotation_summary(summary, ax=ax)
-        st.pyplot(fig)
+        draw((5, 3.4), lambda ax: plotting.plot_annotation_summary(summary, ax=ax))
     with right:
         st.subheader("Differential splicing")
-        fig, ax = plt.subplots(figsize=(5, 3.8))
-        plotting.plot_volcano(dsplice, q=q_thr, min_delta=delta_thr, ax=ax)
-        st.pyplot(fig)
+        draw(
+            (5, 3.8),
+            lambda ax: plotting.plot_volcano(dsplice, q=q_thr, min_delta=delta_thr, ax=ax),
+        )
 
     if note:
         # a legitimate slider position, not an error: say what to change
@@ -101,9 +118,7 @@ try:
         st.dataframe(scores.head(25))
 
         st.subheader("What the classifier keys on")
-        fig, ax = plt.subplots(figsize=(6, 3.2))
-        plotting.plot_importance(importances, ax=ax)
-        st.pyplot(fig)
+        draw((6, 3.2), lambda ax: plotting.plot_importance(importances, ax=ax))
 except Exception as exc:  # pragma: no cover - keep the demo from showing a blank error
     st.error("Something went wrong while running the analysis.")
     st.exception(exc)

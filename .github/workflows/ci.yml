@@ -32,7 +32,9 @@ jobs:
         run: ruff check .
 
       - name: Test (pytest)
-        run: pytest -q
+        # A floor, not a target: it sits well under the 96 % the suite reaches, so it
+        # fires on a feature landing untested rather than on ordinary movement.
+        run: pytest -q --cov=splicescope --cov-report=term-missing --cov-fail-under=90
 
       - name: Smoke-test the CLI
         run: |

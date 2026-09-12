@@ -84,6 +84,26 @@ replicate count**, however large the effect. On a real TDP-43 knockdown (3 vs 3)
 produced 0 hits with `min(q) = 1.0`, while rMATS called 3 724 events on the same BAMs.
 Modelling counts removes the floor: evidence grows with coverage, not only with replicates.
 
+**The floor above is the exact test's, and ties get under it.**
+`scipy.stats.mannwhitneyu` computes the exact p-value only while the sample is small and
+free of ties, and uses the normal approximation otherwise, which returns less:
+
+| 3 vs 3, two-sided | p |
+|---|---:|
+| separated, untied — exact | 0.100 |
+| the same data, approximation forced | 0.081 |
+| one group holding tied values | 0.064 |
+| Ψ = 0 in every control, 1 in every knockdown | **0.047** |
+
+Ties are not an edge case here: the last row *is* the signature this tool exists to find,
+and it lands under the nominal 0.05. The rank test is therefore not floored at 0.1 in
+practice — it is floored near 0.047, and only correction keeps it from calling.
+
+Correction does keep it. With 40 switching junctions among `m` tested, BH rejects the
+40th only if `p ≤ 0.05 × 40 / m`: 5e-2 at `m = 40`, 1e-3 at `m = 2 000`, 1.4e-5 across a
+genome's 1.4 × 10⁵. The conclusion stands at any realistic `m` — but the reason is
+Benjamini–Hochberg, not the exact floor, and a small enough experiment breaks it.
+
 ### 5.2 Beta-binomial likelihood-ratio test
 
 Inclusion reads `k` out of `n` informative reads are beta-binomial with mean Ψ and

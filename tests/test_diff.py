@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import pytest
 
 from splicescope.diff import benjamini_hochberg, differential_splicing, significant
 from splicescope.quantify import compute_psi
@@ -111,3 +112,119 @@ def test_the_reported_qvalue_is_benjamini_hochberg_of_the_pvalue():
     assert not np.allclose(out["qvalue"], out["pvalue"]), (
         "with 200 units the correction has to move something"
     )
+
+
+def _psi_without_counts(n_units=40, delta=0.35, seed=0, tied=False):
+    """A long Ψ table carrying no read counts, which is what forces the rank test.
+
+    ``tied`` saturates the knockdown group at 1.0, which is what a cryptic junction
+    actually looks like — off in every control, on in every knockdown — and which sends
+    `scipy.stats.mannwhitneyu` down its normal-approximation path.
+    """
+    rng = np.random.default_rng(seed)
+    samples = ["C1", "C2", "C3", "K1", "K2", "K3"]
+    rows = []
+    for unit in range(n_units):
+        base = 0.20 + 0.005 * unit
+        for sample in samples:
+            knocked = sample.startswith("K")
+            if tied:
+                psi = 1.0 if knocked else 0.0
+            else:
+                psi = base + (delta if knocked else 0.0) + rng.normal(0, 0.005)
+            rows.append(
+                {
+                    "chrom": "chr1", "start": 1000 + 10 * unit, "end": 1200 + 10 * unit,
+                    "strand": "+", "sample": sample, "psi_donor": psi,
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def _groups(psi):
+    return {s: ("ctrl" if s[0] == "C" else "kd") for s in psi["sample"].unique()}
+
+
+def test_the_rank_test_cannot_beat_the_exact_floor():
+    """The legacy path, and the whole argument of METHODS §5.1: a two-sided
+    Mann-Whitney on n replicates per group cannot return a p-value below 2/C(2n,n),
+    which is 0.1 for 3 against 3. Nothing tested the implementation — only the formula
+    for the floor, in `test_betabinom.py`."""
+    from splicescope.betabinom import min_achievable_rank_pvalue
+    from splicescope.diff import differential_splicing
+
+    psi = _psi_without_counts()
+    out = differential_splicing(psi, _groups(psi), test="ranksum")
+
+    assert len(out) == 40
+    assert out["n_a"].eq(3).all() and out["n_b"].eq(3).all()
+    assert out["delta_psi"].min() > 0.3, "the difference is real and one-directional"
+
+    floor = min_achievable_rank_pvalue(3, 3)
+    assert floor == pytest.approx(0.1)
+    assert out["pvalue"].eq(floor).all(), (
+        "separated, untied groups of three give exactly the floor and never less"
+    )
+    assert out["qvalue"].min() > 0.05, "so nothing survives correction, at any effect size"
+
+
+def test_ties_take_the_rank_test_below_its_exact_floor_and_correction_holds_anyway():
+    """The floor is the *exact* test's. scipy computes it exactly only for a small,
+    tie-free sample; with ties it uses the normal approximation, which returns less. A
+    junction that is off in every control and on in every knockdown is fully tied on
+    both sides and gives 0.047 — under the nominal 0.05, and the signature this tool
+    exists to find. So the rank test is not floored at 0.1 in practice.
+
+    What keeps it from calling is Benjamini-Hochberg across everything else tested. That
+    is a weaker guarantee than the floor, and it is worth having in a test: 40 switching
+    junctions among 2 000 need the 40th at p <= 0.001, and 0.047 is nowhere near it.
+    """
+    from splicescope.diff import differential_splicing
+
+    rng = np.random.default_rng(3)
+    switching, tested = 40, 2000
+    samples = ["C1", "C2", "C3", "K1", "K2", "K3"]
+    rows = []
+    for unit in range(tested):
+        for sample in samples:
+            knocked = sample.startswith("K")
+            psi = (1.0 if knocked else 0.0) if unit < switching else rng.uniform(0.2, 0.8)
+            rows.append(
+                {
+                    "chrom": "chr1", "start": 1000 + 10 * unit, "end": 1200 + 10 * unit,
+                    "strand": "+", "sample": sample, "psi_donor": psi,
+                }
+            )
+    psi_table = pd.DataFrame(rows)
+    out = differential_splicing(psi_table, _groups(psi_table), test="ranksum")
+    switched = out[out["delta_psi"] == 1.0]
+
+    assert len(switched) == switching
+    assert np.allclose(switched["pvalue"], 0.046854, atol=1e-5), (
+        "a fully tied 3-vs-3 goes below both the exact floor and the nominal 0.05"
+    )
+    assert switched["qvalue"].min() > 0.05, (
+        "correction is what refuses it, and this is the guarantee that actually holds"
+    )
+
+
+def test_auto_falls_back_to_the_rank_test_only_when_counts_are_absent():
+    from splicescope.diff import differential_splicing
+
+    psi = _psi_without_counts()
+    without = differential_splicing(psi, _groups(psi), test="auto")
+    assert "lrt_statistic" not in without.columns, "no counts, so no likelihood ratio"
+
+    with_counts = psi.assign(donor_total=80.0, count=(psi["psi_donor"] * 80).round())
+    chosen = differential_splicing(with_counts, _groups(psi), test="auto")
+    assert "lrt_statistic" in chosen.columns, "counts present, so the beta-binomial is used"
+    assert chosen["pvalue"].min() < 1e-6, "which clears correction where the rank test cannot"
+    assert chosen["qvalue"].min() < 0.05
+
+
+def test_the_beta_binomial_cannot_be_asked_for_without_counts():
+    from splicescope.diff import differential_splicing
+
+    psi = _psi_without_counts()
+    with pytest.raises(ValueError, match="count"):
+        differential_splicing(psi, _groups(psi), test="betabinom")

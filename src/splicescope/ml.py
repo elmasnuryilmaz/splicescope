@@ -197,8 +197,13 @@ class CrypticClassifier:
             f"**Task:** {card['task']}  ",
             f"**Evaluation:** {card['evaluation']}",
             "",
-            "## Cross-validated metrics",
+            "## Hyper-parameters",
         ]
+        # read from the fitted estimator, so the human-readable card cannot claim a
+        # setting the model does not have either
+        for k, v in card["hyperparameters"].items():
+            lines.append(f"- **{k}**: {v}")
+        lines += ["", "## Cross-validated metrics"]
         for k, v in card["cv_metrics"].items():
             lines.append(f"- **{k}**: {v}")
         lines += ["", "## Permutation importance"]

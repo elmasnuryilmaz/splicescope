@@ -208,7 +208,13 @@ def _cmd_run(args: argparse.Namespace) -> int:
             _plot.plot_enrichment(enr, ax=ax)
             _plot.savefig(fig, figs / "enrichment.png")
 
-    # cryptic ML (only if truth labels are available, e.g. simulated data)
+    # cryptic ML. Reads from an aligner carry no labels, so the classifier needs them
+    # supplied — which is what the model card asks for before any real-data use.
+    if args.labels:
+        labelled = _attach_labels(psi, args.labels)
+        if labelled is None:
+            return 2
+        psi = labelled
     if "is_cryptic_truth" in psi.columns:
         feats = _cryptic.extract_features(psi, known)
         if feats["is_cryptic_truth"].nunique() > 1:
@@ -280,6 +286,53 @@ _CONSEQUENCE_MODES = {
 #: ``novel_combination`` is deliberately excluded: both of its sites are annotated, so
 #: it is an exon-skipping junction rather than a shifted splice site, and reading it as
 #: a shift would report the skipped exon as a "truncation".
+LABEL_COLUMNS = ["chrom", "start", "end", "strand", "is_cryptic_truth"]
+
+
+def _attach_labels(psi, path: str):
+    """Merge curated cryptic labels onto the Psi table; ``None`` on a bad file.
+
+    The classifier is supervised, and nothing an aligner writes says whether a junction
+    is a genuine cryptic event. The model card that ships with every fitted model is
+    explicit that real-data use means retraining on curated labels, so there has to be a
+    way to hand them in.
+
+    A junction the file does not mention is left unlabelled and the classifier ignores
+    it, which is the right default: absence from a curation pass is not a negative.
+    """
+    import pandas as pd
+
+    labels = pd.read_csv(path, sep="\t", dtype={"chrom": str, "strand": str})
+    missing = [c for c in LABEL_COLUMNS if c not in labels.columns]
+    if missing:
+        print(
+            f"error: {path} is missing {missing}; a label file needs "
+            f"{LABEL_COLUMNS}",
+            file=sys.stderr,
+        )
+        return None
+
+    key = LABEL_COLUMNS[:4]
+    labels = labels[LABEL_COLUMNS].drop_duplicates(subset=key)
+    merged = psi.merge(labels, on=key, how="left")
+    merged.index = psi.index
+    known_labels = merged["is_cryptic_truth"].notna()
+    if not known_labels.any():
+        print(
+            f"error: no junction in {path} matches one that was tested, so the "
+            "classifier would have nothing to learn from. Check the coordinates are "
+            "1-based intron starts and ends, as in the differential table.",
+            file=sys.stderr,
+        )
+        return None
+    labelled = int(known_labels.sum())
+    print(
+        f"[run] labels: {labelled} of {len(merged)} junction rows matched "
+        f"{path}; the rest are left unlabelled"
+    )
+    return merged
+
+
 SHIFT_CLASSES = ("novel_donor", "novel_acceptor")
 
 
@@ -376,6 +429,14 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--groups", required=True, help="TSV with columns sample,condition")
     r.add_argument("--outdir", required=True)
     r.add_argument("--gene-sets", default=None, help="optional GMT file for pathway enrichment")
+    r.add_argument(
+        "--labels",
+        default=None,
+        help=(
+            "optional TSV of curated cryptic labels, to train and score the classifier: "
+            "columns chrom, start, end, strand, is_cryptic_truth (0/1)"
+        ),
+    )
     r.add_argument(
         "--genome",
         default=None,

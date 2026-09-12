@@ -55,6 +55,23 @@ All notable changes to this project are documented here. The format is based on
   what the previous code produced.
 
 ### Added
+- **`--labels`, which makes the classifier reachable from the command line.** The `run`
+  command already had a supervised-classifier branch, guarded on a truth column — and
+  nothing an aligner writes carries one, so `model_card.json` and `cryptic_scores.tsv`
+  could never be produced from the command line. Fifteen lines of unreachable code in the
+  main entry point, while the model card told every reader to retrain on curated labels
+  before real-data use and the tool offered no way to do it. `--labels` takes a TSV of
+  `chrom, start, end, strand, is_cryptic_truth`, merges it onto the Ψ table, and reports
+  how many rows matched. A file missing columns names them; a file that matches nothing is
+  an error rather than a classifier trained on nothing.
+- **The Markdown model card carries the hyper-parameters too.** The JSON one gained them
+  from the fitted estimator this release; the human-readable card, which is the one a
+  reviewer reads, still omitted them.
+- **Coverage is measured, with a floor in CI.** 96 % of statements, and the `test` job
+  fails below 90 %. Three of the blocks that were uncovered turned out to be whole
+  features with no test: pathway enrichment behind `--gene-sets`, the classifier branch
+  above, and the entire rank-sum test.
+
 - **`validation/dispersion_trade.py`, and the §5.4 tables checked against it.** METHODS
   §5.4 is the argument for leaving `dispersion="shared"` as the default: it costs roughly
   a sixth of the power to halve the false-positive rate on loosely dispersed units. Those
@@ -219,6 +236,23 @@ All notable changes to this project are documented here. The format is based on
   before it failed none.
 
 ### Fixed
+- **METHODS §5.1 overstated the rank test's floor.** It says a two-sided Mann-Whitney on
+  3 against 3 cannot return a p-value below `2/C(6,3)` = 0.1. That is the *exact* test's
+  floor, and `scipy.stats.mannwhitneyu` computes the exact p-value only for a small,
+  tie-free sample — with ties it uses the normal approximation, which returns less:
+
+  | 3 vs 3, two-sided | p |
+  |---|---:|
+  | separated, untied — exact | 0.100 |
+  | the same data, approximation forced | 0.081 |
+  | one group holding tied values | 0.064 |
+  | Ψ = 0 in every control, 1 in every knockdown | **0.047** |
+
+  The last row is the signature the tool exists to find, and it lands under the nominal
+  0.05. The section's conclusion survives — 40 switching junctions among 2 000 need the
+  40th at p ≤ 0.001 — but the reason is Benjamini-Hochberg, not the floor, and a small
+  enough experiment breaks it. Both the section and
+  `min_achievable_rank_pvalue`'s docstring now say so, and a test pins each number.
 - **The §5.4 dispersion figures did not reproduce.** Reconstructing the simulation from
   the parameters the section states gives 0.155 where the table said 0.173, 0.077 where
   it said 0.087, and a shared precision estimate of 10.5 rather than 10.7 — the power

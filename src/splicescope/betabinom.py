@@ -304,6 +304,13 @@ def min_achievable_rank_pvalue(n_a: int, n_b: int) -> float:
     Provided so the limitation this module exists to fix can be shown rather
     than asserted: with 3 against 3 the floor is 0.1, so no rank test can clear
     genome-wide correction no matter how large the effect.
+
+    This is the *exact* test's floor, and not what ``scipy.stats.mannwhitneyu`` returns
+    once there are ties: it then uses the normal approximation, which gives 0.081 for an
+    untied 3 against 3, 0.064 with one group tied, and 0.047 when Psi is 0 in every
+    control and 1 in every knockdown — the signature this module exists to find, under
+    the nominal 0.05. What stops the rank test calling it is Benjamini-Hochberg across a
+    genome's worth of junctions, not the floor. See METHODS section 5.1.
     """
     from math import comb
 

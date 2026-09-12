@@ -76,3 +76,38 @@ def test_a_replicated_design_does_not_warn():
         warnings.simplefilter("always")
         differential_splicing(psi, groups)
     assert [str(w.message) for w in caught] == []
+
+
+def test_the_reported_qvalue_is_benjamini_hochberg_of_the_pvalue():
+    """The FDR claim in every output table. `benjamini_hochberg` is tested on its own,
+    but nothing checked that `differential_splicing` actually applies it — handing the
+    raw p-values through as q-values passed the whole suite."""
+    import numpy as np
+
+    from splicescope.diff import benjamini_hochberg, differential_splicing
+
+    rng = np.random.default_rng(4)
+    n_units, samples = 200, ["C1", "C2", "C3", "K1", "K2", "K3"]
+    rows = []
+    for u in range(n_units):
+        shift = 0.3 if u < 20 else 0.0  # a handful of real differences
+        for s in samples:
+            base = 0.35 + (shift if s.startswith("K") else 0.0)
+            total = int(rng.integers(60, 140))
+            rows.append(
+                dict(
+                    chrom="chr1", start=1000 + 10 * u, end=1200 + 10 * u, strand="+",
+                    sample=s, psi_donor=base, donor_total=float(total),
+                    count=round(base * total),
+                )
+            )
+    psi = pd.DataFrame(rows)
+    out = differential_splicing(psi, {s: ("ctrl" if s[0] == "C" else "kd") for s in samples})
+
+    assert len(out) == n_units
+    expected = benjamini_hochberg(out["pvalue"].to_numpy())
+    np.testing.assert_allclose(out["qvalue"].to_numpy(), expected, rtol=1e-12)
+    assert (out["qvalue"] >= out["pvalue"] - 1e-12).all(), "a q-value cannot beat its p-value"
+    assert not np.allclose(out["qvalue"], out["pvalue"]), (
+        "with 200 units the correction has to move something"
+    )

@@ -506,3 +506,56 @@ def test_an_exon_skipping_junction_is_not_read_as_a_splice_site_shift():
     # genuine shifts are still interpreted
     assert junction_change(tx, 201, 350) == ("extension", 351, 400)
     assert junction_change(tx, 251, 400) == ("extension", 201, 250)
+
+
+def test_the_fifty_nucleotide_boundary_is_exclusive_and_measured_from_the_stop_codon():
+    """The rule this tool is built on: a premature stop triggers decay when it sits
+    more than 50 nucleotides upstream of the last exon-exon junction. Three things
+    about that sentence are separately wrong-able — which junction ("last", so every
+    exon length but the final one), which end of the stop codon the distance is
+    measured from (its end, so ptc + 3), and whether 50 itself counts (it does not).
+
+    One sequence is used twice here, with the downstream exons split one base
+    differently. Nothing about the stop changes; only the distance to the junction
+    does, from exactly 50 to exactly 51, and the call has to flip there and nowhere
+    else.
+    """
+    from splicescope.consequence import NMD_DISTANCE_RULE, _nmd_from_downstream
+
+    assert NMD_DISTANCE_RULE == 50
+    sequence = "AAA" * 20 + "TAA" + "AAA" * 47  # first in-frame stop at offset 60
+    assert len(sequence) == 204
+
+    offset, distance, nmd = _nmd_from_downstream(sequence, [113, 91], frame=0, offset_before=0)
+    assert (offset, distance) == (60, 50)
+    assert not nmd, "a stop exactly 50 nt from the last junction escapes decay"
+
+    offset, distance, nmd = _nmd_from_downstream(sequence, [114, 90], frame=0, offset_before=0)
+    assert (offset, distance) == (60, 51)
+    assert nmd, "one nucleotide further and the same stop triggers decay"
+
+
+def test_a_stop_in_the_last_exon_has_no_junction_to_be_upstream_of():
+    """The last-exon exception, which is not a special case bolted on but the rule
+    read literally: decay needs a junction downstream of the stop, and a stop in the
+    final exon has none. The distance is then not a large number or a negative one, it
+    does not exist — and a caller that prints it must show that."""
+    from splicescope.consequence import _nmd_from_downstream
+
+    sequence = "AAA" * 20 + "TAA" + "AAA" * 47
+    offset, distance, nmd = _nmd_from_downstream(sequence, [204], frame=0, offset_before=0)
+    assert offset == 60
+    assert distance is None, "there is no last junction, so there is no distance"
+    assert not nmd
+
+
+def test_the_reported_stop_offset_is_on_the_scale_of_the_event():
+    """``offset_before`` is how many transcript bases precede the searched sequence, so
+    the offset a caller sees stays comparable with the event's own coordinates."""
+    from splicescope.consequence import _nmd_from_downstream
+
+    sequence = "AAA" * 20 + "TAA" + "AAA" * 47
+    plain = _nmd_from_downstream(sequence, [114, 90], frame=0, offset_before=0)
+    shifted = _nmd_from_downstream(sequence, [114, 90], frame=0, offset_before=300)
+    assert shifted[0] == plain[0] + 300
+    assert shifted[1:] == plain[1:], "only the offset moves; the distance and call do not"

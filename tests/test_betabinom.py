@@ -201,3 +201,66 @@ def test_dispersion_is_not_estimable_when_every_unit_is_covered_in_one_sample_on
     mask[:, 0] = True   # only one sample informative anywhere
     mask[:, 2] = True
     assert not dispersion_is_estimable(n, mask, groups=[group_a, ~group_a])
+
+
+def test_samples_in_neither_group_change_nothing_at_all():
+    """Both hypotheses have to be fitted to the same observations or the ratio is not a
+    likelihood ratio. Leaving ungrouped samples in the null charges their whole
+    likelihood to it: the null looks far worse than it is, and the statistic grows
+    without bound. Measured before the fix, six ungrouped samples alongside an
+    unchanged 3-vs-3 comparison moved p from 1.6e-09 to 9.7e-93.
+
+    So the test is not that the p-value is plausible — it is that the extra samples
+    make no difference whatsoever, however far their Psi sits from either group's.
+    """
+    k, n, mask = simulate(precision=40.0, n_events=300, delta=0.25, seed=5)
+    alone = bb.lrt(k, n, mask, GROUP_A, GROUP_B, s=40.0)
+
+    rng = np.random.default_rng(1)
+    n_extra = (rng.poisson(60, size=(300, 6)) + 5).astype(float)
+    # deliberately nothing like either group: Psi at the two extremes
+    k_extra = (n_extra * rng.choice([0.02, 0.98], size=(300, 6))).round()
+    padded = bb.lrt(
+        np.hstack([k, k_extra]),
+        np.hstack([n, n_extra]),
+        np.ones((300, 12), dtype=bool),
+        np.concatenate([GROUP_A, np.zeros(6, dtype=bool)]),
+        np.concatenate([GROUP_B, np.zeros(6, dtype=bool)]),
+        s=40.0,
+    )
+    for name, before, after in zip(
+        ("mu_a", "mu_b", "statistic", "pvalue"), alone, padded, strict=True
+    ):
+        # 1e-9 is float noise from summing a wider array, not a difference: the bug this
+        # pins moved p-values by eighty-four orders of magnitude.
+        np.testing.assert_allclose(after, before, rtol=1e-9, err_msg=f"{name} moved")
+
+
+def test_the_statistic_is_never_negative():
+    """A likelihood ratio cannot favour the null here, since the null is the
+    alternative with its two means tied. Numerical noise can still put it slightly
+    below zero, and a negative chi-square statistic in an output table is a defect
+    even when the p-value it produces is 1."""
+    k, n, mask = simulate(precision=1e4, n_events=500, delta=0.0, seed=9)
+    _, _, statistic, pvalue = bb.lrt(k, n, mask, GROUP_A, GROUP_B, s=1e4)
+    assert (statistic >= 0).all()
+    assert (pvalue <= 1.0).all()
+
+
+def test_the_estimated_precision_stays_inside_its_bounds():
+    """``s`` is a ratio whose denominator is an excess variance, so data noisier than
+    the beta-binomial can drive it below 1 and, with enough excess, below zero — which
+    makes the likelihood it is handed to meaningless. The bounds are load-bearing, not
+    decoration: Psi drawn from {0.02, 0.98} at 400x coverage lands exactly on the
+    floor."""
+    rng = np.random.default_rng(0)
+    n = np.full((200, N_SAMPLES), 400.0)
+    k = rng.binomial(400, rng.choice([0.02, 0.98], size=(200, N_SAMPLES))).astype(float)
+    mask = np.ones_like(n, dtype=bool)
+    groups = [GROUP_A, GROUP_B]
+
+    s = bb.estimate_precision(k, n, mask, groups=groups)
+    assert 1.0 <= s <= 1e5
+    assert s == pytest.approx(1.0), "this data is meant to sit on the floor"
+    raised = bb.estimate_precision(k, n, mask, groups=groups, min_precision=7.5)
+    assert raised == pytest.approx(7.5), "the floor that is asked for is the one used"

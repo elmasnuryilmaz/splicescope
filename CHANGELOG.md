@@ -48,6 +48,36 @@ All notable changes to this project are documented here. The format is based on
   what the previous code produced.
 
 ### Added
+- **Seven tests for the rules the suite was not checking.** Found by mutation: change a
+  line, run the suite, see whether anything fails. Twenty-one deliberate defects were
+  introduced across the consequence and statistics modules and **nine of them passed all
+  165 tests**. Two mutants turned out to be harmless (a shorter slice can never equal a
+  three-character stop codon; a negative chi-square statistic gives the same p-value of
+  1), and the rest were real gaps, now closed:
+
+  - The **50-nucleotide rule**, which is the tool's central scientific claim, had nothing
+    pinning it. Making the threshold inclusive, measuring the distance from the start of
+    the stop codon instead of its end, or counting the last exon's length into the
+    distance all left 165 tests green. One sequence is now tested twice with the
+    downstream exons split one base apart, so the distance is exactly 50 and then exactly
+    51 and the call has to flip there and nowhere else.
+  - The **last-exon exception** could be deleted without a single failure. A stop in the
+    final exon has no junction downstream to be upstream of, so the distance does not
+    exist, and the test now checks that it is reported as absent rather than as a
+    negative number.
+  - **Samples in neither group.** 0.9.0 fixed a likelihood ratio that charged ungrouped
+    samples entirely to the null and moved a p-value from 1.6e-09 to 9.7e-93; the fix
+    shipped without a regression test. The test now adds six samples whose Psi sits at
+    0.02 and 0.98 to an unchanged 3-vs-3 comparison and requires every returned value to
+    be unmoved.
+  - **The q-value.** Nothing verified that `differential_splicing` applies
+    Benjamini-Hochberg at all — passing the raw p-values straight through as q-values
+    was invisible to the suite, on which the FDR claim in every output table rests.
+  - **The precision bounds.** `s` is a ratio whose denominator is an excess variance, so
+    data noisier than the beta-binomial drives it below 1 and can take it negative, which
+    makes the likelihood meaningless. Psi drawn from {0.02, 0.98} at 400x coverage lands
+    exactly on the floor, so the clip is load-bearing.
+
 - **Two tests for things the event suite could not see.** Every hand-built event test
   uses one chromosome, so a grouping key that forgot the chromosome would pool junctions
   from unrelated genes and assemble events out of the pieces — and nothing in the suite

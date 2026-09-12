@@ -66,7 +66,8 @@ pip install -e ".[dev]"          # add ",app" for the Streamlit dashboard
 
 ```bash
 # 1) write a synthetic, ground-truth dataset: STAR SJ.out.tab + GTF (with CDS)
-#    + groups.tsv + an indexed genome whose genes carry real open reading frames
+#    + groups.tsv + an indexed genome whose genes carry real open reading frames,
+#    plus truth.tsv listing the events injected, so recall can be measured
 splicescope simulate --outdir demo_data
 
 # 2) run the whole pipeline: annotate -> quantify -> events -> differential
@@ -156,7 +157,7 @@ rather than only asserted.
 ## Testing
 
 ```bash
-pytest            # 176 tests: unit + property + end-to-end CLI runs
+pytest            # 179 tests: unit + property + end-to-end CLI runs
 ruff check .      # lint
 ```
 

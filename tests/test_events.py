@@ -323,9 +323,14 @@ def _mxe_cluster(n_exons, spacing=20, count=50):
 
 
 def test_every_injected_mxe_event_is_recovered():
-    """The strongest check available: the simulator knows where it put the exons.
+    """The strongest check available: the simulator reports where it put the exons.
     Both the original one-pair-per-anchor bug and two geometric attempts at bounding
-    the search lost 15-22% of these while still emitting a plausible-looking table."""
+    the search lost 15-22% of these while still emitting a plausible-looking table.
+
+    This asserted `>= 55 of 60` until the simulator gained a truth table, because the
+    injected set had to be reconstructed from the coordinates and that arithmetic gives
+    every geometry the simulator *could* have used. Recall is exact now.
+    """
     from splicescope.annotate import annotate_junctions
     from splicescope.events import detect_mxe_events
 
@@ -334,17 +339,73 @@ def test_every_injected_mxe_event_is_recovered():
                               alt_ss_fraction=0.8, cryptic_fraction=0.5, seed=seed)
         events = detect_mxe_events(annotate_junctions(ds.observed, ds.known))
         injected = {
-            (i + 50, i + 90, i + 150, i + 190)
-            for i in (r.start for r in ds.known.itertuples(index=False))
+            (r.exonA_start, r.exonA_end, r.exonB_start, r.exonB_end)
+            for r in ds.truth[ds.truth.event_type == "MXE"].itertuples(index=False)
         }
         found = {
             (r.exonA_start, r.exonA_end, r.exonB_start, r.exonB_end)
             for r in events.itertuples(index=False)
         }
-        # `injected` is every candidate geometry the simulator *could* have used; only
-        # the genes it actually chose carry one, so this is a floor, not a recall rate.
-        recovered = len(injected & found)
-        assert recovered >= 55, f"seed {seed} recovered only {recovered} of the injected pairs"
+        assert injected, "the simulator was asked for MXE events and reported none"
+        assert injected <= found, (
+            f"seed {seed} missed {len(injected - found)} of {len(injected)} injected pairs"
+        )
+
+
+def test_every_injected_event_of_every_type_is_recovered():
+    """Recall for all four types at once, against what the simulator says it injected
+    rather than against what the coordinates allow. Noise junctions can form further
+    valid geometries, so the detector may report more than was injected; what it may
+    not do is miss one.
+    """
+    from splicescope.annotate import annotate_junctions
+
+    for seed in (4, 6, 11, 17):
+        ds = simulate_dataset(n_genes=60, n_per_group=6, mxe_fraction=0.4,
+                              alt_ss_fraction=0.8, cryptic_fraction=0.6, seed=seed)
+        events = detect_events(annotate_junctions(ds.observed, ds.known))
+        truth = ds.truth
+
+        # a cryptic exon is a cassette: its host intron is the skipping junction
+        se = events[events.event_type == "SE"]
+        found = set(zip(se.skip_start, se.skip_end, se.exon_start, se.exon_end, strict=True))
+        want = {
+            (r.intron_start, r.intron_end, r.exonA_start, r.exonA_end)
+            for r in truth[truth.event_type == "cryptic_exon"].itertuples(index=False)
+        }
+        assert want <= found, f"seed {seed}: {len(want - found)} of {len(want)} cryptic exons"
+
+        for kind in ("A5SS", "A3SS"):
+            want = set(truth.loc[truth.event_type == kind, "site_pos"])
+            found = set(events.loc[events.event_type == kind, "site_pos"])
+            assert want and want <= found, (
+                f"seed {seed}: {len(want - found)} of {len(want)} {kind} sites"
+            )
+
+        mxe = events[events.event_type == "MXE"]
+        found = set(
+            zip(mxe.exonA_start, mxe.exonA_end, mxe.exonB_start, mxe.exonB_end, strict=True)
+        )
+        want = {
+            (r.exonA_start, r.exonA_end, r.exonB_start, r.exonB_end)
+            for r in truth[truth.event_type == "MXE"].itertuples(index=False)
+        }
+        assert want <= found, f"seed {seed}: {len(want - found)} of {len(want)} MXE pairs"
+
+
+def test_one_intron_carries_at_most_one_injected_event():
+    """What makes the recall above meaningful. Two events in one intron do not just
+    crowd each other, they change what the reads mean: an MXE intron has no skipping
+    junction, so a cryptic exon placed in it is not a detectable cassette, and an
+    alternative donor there is also a leg of an MXE pair and is reported as that. Both
+    readings are right and both make the truth table claim events that are not there —
+    which is why MXE recall used to be quoted as a floor.
+    """
+    for seed in (4, 6, 11, 17):
+        ds = simulate_dataset(n_genes=60, n_per_group=6, mxe_fraction=0.4,
+                              alt_ss_fraction=0.8, cryptic_fraction=0.6, seed=seed)
+        introns = list(zip(ds.truth.intron_start, ds.truth.intron_end, strict=True))
+        assert len(introns) == len(set(introns)), f"seed {seed} reused an intron"
 
 
 def test_a_crowded_anchor_is_bounded_and_says_so():

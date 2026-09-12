@@ -48,6 +48,14 @@ All notable changes to this project are documented here. The format is based on
   what the previous code produced.
 
 ### Added
+- **The simulator reports the events it injected.** `SimulatedDataset.truth` is a table
+  of every injected cryptic exon, A5SS, A3SS and MXE with its host intron and exon
+  coordinates, and `write_dataset` writes it as `truth.tsv` beside the SJ files. Recall
+  was previously measured against a set reconstructed from the coordinates, which gives
+  every geometry the simulator *could* have used rather than the ones it did — a gene
+  drawn for an event is skipped when its intron cannot hold one. That is why the MXE test
+  asserted `>= 55 of 60` and said so in a comment. It now asserts all of them.
+
 - **`validation/mutation_survey.py`, and a weekly CI job that runs it.** The survey
   that found the gaps below is now a script, so the claim is reproducible rather than
   asserted — the same shape as the other scripts in `validation/`. It breaks the code 44
@@ -120,6 +128,16 @@ All notable changes to this project are documented here. The format is based on
   before it failed none.
 
 ### Fixed
+- **The simulator no longer put two events in one intron.** It does not just crowd
+  them, it changes what the reads mean. An MXE intron has its skipping junction
+  suppressed, because mutually exclusive exons have no skipping isoform, so a cryptic
+  exon placed in the same intron is not a detectable cassette; and an alternative donor
+  there is also a leg of an MXE pair, so it is reported as that and excluded from
+  alternative-site detection. Both readings are right, and both made the ground truth
+  claim events that were not in the data — 5 of 37 cryptic exons and 1 of 24 A5SS sites
+  on one seed. An intron now carries at most one event, and a gene whose chosen intron is
+  taken picks another instead of being dropped. Recall against the reported truth is then
+  **100 % for all four event types on every seed tested**.
 - **`differential_splicing` refuses a sample/group mismatch instead of returning
   nothing.** If no sample in the Psi table is named in `groups`, every row is
   unassigned, every unit fails `min_samples`, and an empty table comes back: the caller

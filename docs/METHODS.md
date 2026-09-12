@@ -312,7 +312,21 @@ genome and per-sample junctions:
    (variable effect size). A minority use a non-canonical motif.
 3. **Noise** — sporadic, low-support novel junctions; a fraction are *hard negatives*
    that share a known donor, use a canonical motif and recur (so the classes overlap).
-4. **Label noise** (optional) — a fraction of ground-truth labels are flipped to mimic
+4. **One event per intron.** An intron carries at most one injected event, and the
+   events that were placed are reported in `truth.tsv` (`SimulatedDataset.truth`) rather
+   than left to be reconstructed from the coordinates. Both matter for measuring recall.
+   Reconstructing gives every geometry the simulator *could* have used, since a gene
+   drawn for an event is skipped when its intron cannot hold one — which is why MXE
+   recall was previously quoted as a floor (`>= 55 of 60`) rather than a rate. And two
+   events in one intron do not merely crowd each other, they change what the reads mean:
+   an MXE intron has its skipping junction suppressed, because mutually exclusive exons
+   have no skipping isoform, so a cryptic exon placed there is not a detectable cassette,
+   and an alternative donor there is also a leg of an MXE pair and is reported as that
+   instead. Both readings are correct; both made the truth table claim events that were
+   not in the data. With the collision removed, recall against the reported truth is
+   **100 % for all four event types on every seed tested** (60/60 MXE, and SE, A5SS and
+   A3SS complete across four seeds).
+5. **Label noise** (optional) — a fraction of ground-truth labels are flipped to mimic
    imperfect curation, so the ML task is realistically hard rather than trivially
    separable.
 

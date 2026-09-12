@@ -26,11 +26,27 @@ import pandas as pd
 _NONCANONICAL = ["non-canonical", "GC/AG", "AT/AC", "GT/AT"]
 
 
+#: Columns of :attr:`SimulatedDataset.truth`. Type-specific fields are NaN elsewhere,
+#: the same shape :func:`splicescope.events.detect_events` returns.
+TRUTH_COLUMNS = [
+    "event_type", "gene_id", "chrom", "strand",
+    "intron_start", "intron_end",
+    "exonA_start", "exonA_end", "exonB_start", "exonB_end",
+    "site_pos", "alt_pos",
+]
+
+
 @dataclass
 class SimulatedDataset:
     known: pd.DataFrame
     observed: pd.DataFrame
     groups: dict[str, str] = field(default_factory=dict)
+    #: One row per event actually injected — see :data:`TRUTH_COLUMNS`. Recovering this
+    #: from the coordinates is not equivalent: a gene drawn for an event is skipped when
+    #: its intron is too short to hold one, so the arithmetic gives every geometry the
+    #: simulator *could* have used rather than the ones it did. Recall measured against
+    #: the former is a lower bound, which is what the MXE test used to assert.
+    truth: pd.DataFrame = field(default_factory=lambda: pd.DataFrame(columns=TRUTH_COLUMNS))
 
 
 def simulate_dataset(
@@ -77,6 +93,20 @@ def simulate_dataset(
     groups = {s: ("A" if s.startswith("A") else "B") for s in samples}
 
     records: list[dict] = []
+    truth_rows: list[dict] = []
+
+    def note(event_type, gene_id, intron, **fields):
+        truth_rows.append(
+            {
+                "event_type": event_type,
+                "gene_id": gene_id,
+                "chrom": chrom,
+                "strand": strand,
+                "intron_start": intron[0],
+                "intron_end": intron[1],
+                **fields,
+            }
+        )
 
     def emit(start, end, motif, truth, per_sample_counts):
         for s, c in per_sample_counts.items():
@@ -109,6 +139,14 @@ def simulate_dataset(
                 mxe_intron_map[gene_id] = candidates[rng.integers(len(candidates))]
     mxe_introns = set(mxe_intron_map.values())
 
+    # One intron carries at most one injected event, so the truth table is unambiguous.
+    # Two events in one intron do not merely crowd each other, they change what the reads
+    # mean: an MXE intron has its skipping junction suppressed, so a cryptic exon placed
+    # in it has no cassette to be detected as, and an alternative donor there is also a
+    # leg of an MXE pair and is reported as that instead. Both are the right reading of
+    # the data and both make the truth table claim events that are not there.
+    taken: set[tuple[int, int]] = set(mxe_introns)
+
     # 1) canonical introns — well expressed everywhere (except MXE introns)
     canonical_base = {}
     for _, i_start, i_end, _, _ in known.itertuples(index=False):
@@ -123,12 +161,11 @@ def simulate_dataset(
     # classification task is non-trivial rather than perfectly separable.
     cryptic_genes = [g for g in gene_introns if rng.random() < cryptic_fraction]
     for gene_id in cryptic_genes:
-        introns = gene_introns[gene_id]
-        if not introns:
+        free = [iv for iv in gene_introns[gene_id] if iv not in taken and iv[1] - iv[0] >= 200]
+        if not free:
             continue
-        i_start, i_end = introns[rng.integers(len(introns))]
-        if i_end - i_start < 200:
-            continue
+        i_start, i_end = free[rng.integers(len(free))]
+        taken.add((i_start, i_end))
         c_start = i_start + 100
         c_end = c_start + 60
         strength = rng.uniform(0.35, 1.0)  # subtle -> strong
@@ -140,26 +177,28 @@ def simulate_dataset(
         motif = "GT/AG" if rng.random() > 0.15 else _NONCANONICAL[rng.integers(len(_NONCANONICAL))]
         emit(i_start, c_start - 1, motif, 1, incl)  # novel_acceptor (shares known donor)
         emit(c_end + 1, i_end, motif, 1, incl)      # novel_donor (shares known acceptor)
+        note("cryptic_exon", gene_id, (i_start, i_end), exonA_start=c_start, exonA_end=c_end)
 
     # 2b) alternative 5′/3′ splice-site events (B-upregulated alternative usage).
     alt_genes = [g for g in gene_introns if rng.random() < alt_ss_fraction]
     for gene_id in alt_genes:
-        introns = gene_introns[gene_id]
-        if not introns:
+        free = [iv for iv in gene_introns[gene_id] if iv not in taken and iv[1] - iv[0] >= 120]
+        if not free:
             continue
-        i_start, i_end = introns[rng.integers(len(introns))]
-        if i_end - i_start < 120:
-            continue
+        i_start, i_end = free[rng.integers(len(free))]
+        taken.add((i_start, i_end))
         delta = int(rng.integers(20, 60))
         alt = {s: int(rng.poisson(50 if groups[s] == "B" else 12)) for s in samples}
         if rng.random() < 0.5:
             emit(i_start + delta, i_end, "GT/AG", 0, alt)  # A5SS: alt donor, shared acceptor
+            note("A5SS", gene_id, (i_start, i_end), site_pos=i_end, alt_pos=i_start + delta)
         else:
             emit(i_start, i_end - delta, "GT/AG", 0, alt)  # A3SS: shared donor, alt acceptor
+            note("A3SS", gene_id, (i_start, i_end), site_pos=i_start, alt_pos=i_end - delta)
 
     # 2c) mutually-exclusive-exon (MXE) events: exon A favoured in condition A,
     # exon B in condition B, between shared flanking exons (no skipping isoform).
-    for _gene_id, (i_start, i_end) in mxe_intron_map.items():
+    for gene_id, (i_start, i_end) in mxe_intron_map.items():
         a_start, a_end = i_start + 50, i_start + 90
         b_start, b_end = i_start + 150, i_start + 190
         if b_end + 1 >= i_end:
@@ -170,6 +209,10 @@ def simulate_dataset(
         emit(a_end + 1, i_end, "GT/AG", 0, incl_a)      # exon A -> down
         emit(i_start, b_start - 1, "GT/AG", 0, incl_b)  # up -> exon B
         emit(b_end + 1, i_end, "GT/AG", 0, incl_b)      # exon B -> down
+        note(
+            "MXE", gene_id, (i_start, i_end),
+            exonA_start=a_start, exonA_end=a_end, exonB_start=b_start, exonB_end=b_end,
+        )
 
     # 3) noise novel junctions — mostly sporadic/low, but a fraction mimic real
     # events (canonical motif, recurrent support) so classes overlap, truth=0.
@@ -216,7 +259,12 @@ def simulate_dataset(
             observed.loc[mask, "is_cryptic_truth"] = 1 - observed.loc[mask, "is_cryptic_truth"]
         observed = observed.drop(columns="_jid")
 
-    return SimulatedDataset(known=known, observed=observed, groups=groups)
+    truth = pd.DataFrame(truth_rows, columns=TRUTH_COLUMNS)
+    # nullable integers, so a coordinate that does not apply to this event type is blank
+    # rather than NaN — which would otherwise make every coordinate a float on the way out
+    for column in TRUTH_COLUMNS[4:]:
+        truth[column] = truth[column].astype("Int64")
+    return SimulatedDataset(known=known, observed=observed, groups=groups, truth=truth)
 
 
 _BASES = ("A", "C", "G", "T")
@@ -374,4 +422,7 @@ def write_dataset(ds: SimulatedDataset, outdir: str | Path, seed: int = 0) -> Pa
     pd.DataFrame(
         {"sample": list(ds.groups), "condition": list(ds.groups.values())}
     ).to_csv(outdir / "groups.tsv", sep="\t", index=False)
+    # the events that were injected, so recall can be measured against them rather
+    # than guessed at from the coordinates
+    ds.truth.to_csv(outdir / "truth.tsv", sep="\t", index=False)
     return outdir

@@ -31,6 +31,9 @@ def _cmd_simulate(args: argparse.Namespace) -> int:
     n_junc = ds.observed.drop_duplicates(["chrom", "start", "end", "strand"]).shape[0]
     print(f"[simulate] wrote {n_junc} unique junctions for {len(ds.groups)} samples -> {out}")
     print(f"[simulate] annotation.gtf (with CDS) and genome.fa (+.fai) written to {out}")
+    if not ds.truth.empty:
+        counts = {k: int(v) for k, v in ds.truth["event_type"].value_counts().items()}
+        print(f"[simulate] truth.tsv: {counts} — the events injected, for measuring recall")
     return 0
 
 

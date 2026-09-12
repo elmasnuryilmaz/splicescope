@@ -36,3 +36,27 @@ def test_ml_recovers_signal():
     assert scored["cryptic_score"].is_monotonic_decreasing
     card = clf.model_card()
     assert card["cv_metrics"]["roc_auc"] == metrics["roc_auc"]
+
+
+def test_the_injected_events_are_written_out_next_to_the_data(tmp_path):
+    """A ground-truth dataset whose ground truth stays in memory is only useful from
+    inside the test suite. `truth.tsv` lands beside the SJ files so anyone can measure
+    recall on the simulated data without reimplementing the generator's arithmetic."""
+    import pandas as pd
+
+    from splicescope.simulate import TRUTH_COLUMNS, simulate_dataset, write_dataset
+
+    ds = simulate_dataset(n_genes=14, mxe_fraction=0.5, alt_ss_fraction=0.5, seed=2)
+    out = write_dataset(ds, tmp_path / "sim", seed=2)
+
+    written = pd.read_csv(out / "truth.tsv", sep="\t")
+    assert list(written.columns) == TRUTH_COLUMNS
+    assert len(written) == len(ds.truth)
+    assert set(written["event_type"]) <= {"cryptic_exon", "A5SS", "A3SS", "MXE"}
+    # coordinates survive as integers, not as 1220.0
+    assert (written["intron_start"] % 1 == 0).all()
+    assert written["exonA_start"].dropna().astype(int).gt(0).all()
+    # every row names an intron the annotation actually contains
+    known = {(r.start, r.end) for r in ds.known.itertuples(index=False)}
+    for row in written.itertuples(index=False):
+        assert (row.intron_start, row.intron_end) in known, row

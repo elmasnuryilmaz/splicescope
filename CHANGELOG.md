@@ -48,6 +48,14 @@ All notable changes to this project are documented here. The format is based on
   what the previous code produced.
 
 ### Added
+- **`validation/mutation_survey.py`, and a weekly CI job that runs it.** The survey
+  that found the gaps below is now a script, so the claim is reproducible rather than
+  asserted — the same shape as the other scripts in `validation/`. It breaks the code 44
+  ways, runs the suite against each, and exits non-zero on any surprise: a defect nothing
+  failed on, or one of the two documented equivalent mutants suddenly being caught. 42
+  are caught, 2 survive by construction, 0 surprises. Too slow for every push at one full
+  suite run per mutation, so CI runs it on Mondays and on request.
+
 - **Eleven tests for the rules the suite was not checking.** Found by mutation: change
   a line, run the suite, see whether anything fails. Thirty-seven deliberate defects were
   introduced across every module and **thirteen of them passed all 165 tests**. Two are

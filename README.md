@@ -100,7 +100,17 @@ psi  = quantify.compute_psi(ann)                            # splice-site usage 
 dpsi = diff.differential_splicing(psi, ds.groups)           # ΔΨ + beta-binomial LRT + BH
 
 feats = cryptic.extract_features(psi, ds.known)             # per-junction features
-clf   = CrypticClassifier().evaluate(feats)                 # stratified-CV ROC-AUC / AP
+clf     = CrypticClassifier()
+metrics = clf.evaluate(feats)                               # stratified-CV ROC-AUC / AP
+```
+
+Or the whole of it, protein consequences included, in one call:
+
+```python
+from splicescope.demo import run_demo
+
+result = run_demo(n_genes=20, cryptic_fraction=0.6)
+result.consequences[["gene_name", "insert_length", "ptc_offset", "consequence_class"]]
 ```
 
 ## How it works
@@ -112,6 +122,7 @@ flowchart LR
     B --> D["events<br/>SE · MXE · A5SS · A3SS"]
     C --> E["diff<br/>ΔΨ · beta-binomial LRT · FDR"]
     D --> E
+    D --> I["consequence<br/>frame · PTC · NMD"]
     E --> F["enrich<br/>pathway ORA"]
     C --> G["cryptic + ml<br/>cross-validated calls"]
     E --> H["plotting<br/>volcano · ROC · panels"]
@@ -166,7 +177,7 @@ rather than only asserted.
 ## Testing
 
 ```bash
-pytest            # 295 tests: unit + property-based + end-to-end CLI runs
+pytest            # 296 tests: unit + property-based + end-to-end CLI runs
 ruff check .      # lint
 pytest --cov=splicescope   # 97 % of statements; CI fails below 90 %
 ```

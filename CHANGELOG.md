@@ -64,6 +64,15 @@ All notable changes to this project are documented here. The format is based on
   the three-a-side design METHODS §5.1 is about, it is the difference between **32 of 44
   events called and none at all**.
 
+- **The README's Python examples are run by the suite, and the diagram shows the
+  consequence step.** A snippet that has stopped working is the first thing a reader
+  meets, and nothing touched them. Both had something wrong: one assigned `evaluate`'s
+  metrics dict to a variable called `clf`, so the obvious next line — `clf.fit(...)` —
+  would have raised on a dict; and the flowchart of how the pipeline fits together left
+  out the protein-consequence step entirely, which is the layer the demo is now built
+  around. There is also a second example showing the whole pipeline, consequences
+  included, in one call.
+
 - **A `py.typed` marker, so the annotations are usable.** Sixty of the sixty-five
   public functions carried type hints and none of them was visible to anyone installing
   this: under PEP 561 a type checker ignores a package's inline annotations unless the

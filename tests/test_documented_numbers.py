@@ -111,3 +111,25 @@ def test_the_dispersion_trade_tables_match_the_script_that_produces_them():
         assert abs(measured[name] - float(value)) <= tolerance, (
             f"{name}: METHODS says {value}, the script gives {measured[name]:.4f}"
         )
+
+
+def test_the_readme_s_python_examples_run():
+    """A snippet that stopped working is a visible defect: it is the first code a reader
+    tries, and nothing else in the suite touches it. Both of the README's examples had
+    something wrong when this was written — one assigned `evaluate`'s metrics dict to a
+    variable called `clf`, so the obvious next line, `clf.fit(...)`, would have raised."""
+    import re
+
+    blocks = re.findall(r"```python\n(.*?)```", (ROOT / "README.md").read_text(), re.S)
+    assert len(blocks) >= 2, "the quickstart and the one-call example"
+
+    for index, source in enumerate(blocks):
+        namespace: dict = {}
+        try:
+            exec(compile(source, f"README.md[python block {index}]", "exec"), namespace)
+        except Exception as exc:  # noqa: BLE001 - the point is to report any failure
+            raise AssertionError(
+                f"README python block {index} failed: {type(exc).__name__}: {exc}\n"
+                f"{source}"
+            ) from exc
+        assert namespace, f"block {index} defined nothing — is it really runnable?"

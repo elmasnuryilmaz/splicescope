@@ -624,3 +624,30 @@ def test_a_removed_stretch_is_described_as_removed():
         }
     )
     assert sentence.startswith("Removing these 20 nucleotides")
+
+
+def test_an_in_frame_change_says_whether_the_protein_gains_or_loses_residues():
+    """A cassette exon adds codons; a shifted splice site that trims one removes them.
+    The sentence has to say which, and swapping the two words was invisible to the
+    suite until this test."""
+    from splicescope.consequence import describe
+
+    added = describe(
+        {
+            "consequence_class": "in_frame_insertion", "insert_length": 42,
+            "frameshift": False, "ptc_offset": None,
+            "distance_to_last_junction": None, "nmd_predicted": False,
+        }
+    )
+    assert "Including these 42 nucleotides" in added
+    assert "gains 14 amino acids" in added and "loses" not in added
+
+    removed = describe(
+        {
+            "consequence_class": "in_frame_insertion", "insert_length": -42,
+            "frameshift": False, "ptc_offset": None,
+            "distance_to_last_junction": None, "nmd_predicted": False,
+        }
+    )
+    assert "Removing these 42 nucleotides" in removed
+    assert "loses 14 amino acids" in removed and "gains" not in removed

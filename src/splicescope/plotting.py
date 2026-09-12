@@ -150,6 +150,44 @@ def plot_consequence_summary(consequence, ax=None):
     return ax
 
 
+def plot_event_psi(psi, groups, ax=None, title: str | None = None):
+    """One event's PSI in every sample, split by condition.
+
+    The number a differential test reports is a summary; this is the measurement behind
+    it. A reader who cannot see the replicates has to take ΔΨ on trust, and a single
+    outlying sample is exactly what a summary hides.
+
+    ``psi`` is the rows of :func:`splicescope.events.event_psi` for one event; ``groups``
+    maps sample to condition.
+    """
+    if ax is None:
+        _, ax = plt.subplots(figsize=(4.6, 3.2))
+    frame = psi.assign(condition=psi["sample"].map(groups)).dropna(subset=["condition"])
+    conditions = sorted(frame["condition"].unique())
+    colors = {conditions[0]: _MUTED}
+    if len(conditions) > 1:
+        colors[conditions[1]] = _ACCENT
+
+    rng = np.random.default_rng(0)
+    for position, condition in enumerate(conditions):
+        values = frame.loc[frame["condition"] == condition, "psi"].to_numpy(dtype=float)
+        jitter = position + rng.uniform(-0.09, 0.09, size=len(values))
+        ax.scatter(jitter, values, s=52, color=colors[condition], zorder=3,
+                   edgecolor="white", linewidth=0.8)
+        if len(values):
+            ax.hlines(np.nanmean(values), position - 0.25, position + 0.25,
+                      color=colors[condition], linewidth=2.2, zorder=4)
+
+    ax.set_xticks(range(len(conditions)))
+    ax.set_xticklabels(conditions)
+    ax.set_xlim(-0.6, len(conditions) - 0.4)
+    ax.set_ylim(-0.03, min(1.03, max(0.25, float(frame["psi"].max(skipna=True)) * 1.25)))
+    ax.set_ylabel("Ψ (exon inclusion)")
+    ax.set_title(title or "Inclusion in every replicate")
+    _style(ax)
+    return ax
+
+
 def plot_enrichment(enrich, top: int = 10, ax=None):
     """Horizontal bar of the most enriched gene sets (−log10 q-value)."""
     if ax is None:

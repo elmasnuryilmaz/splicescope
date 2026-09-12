@@ -55,6 +55,25 @@ All notable changes to this project are documented here. The format is based on
   what the previous code produced.
 
 ### Added
+- **The dashboard answers a question instead of redrawing charts.** It used to be a
+  simulator with sliders: move one, the data is regenerated, the charts change. That
+  demonstrates that the code runs, not what it is for — and the tool's most distinctive
+  layer, the protein consequence, was not on the page at all.
+
+  It now walks one cryptic cassette exon from junctions to protein. Its Ψ in every
+  replicate, control against knockdown, so the effect is visible rather than summarised.
+  Then what including it does, in a sentence: *"Including these 61 nucleotides shifts the
+  reading frame, and the first premature stop codon appears 63 nucleotides in. It sits
+  355 nucleotides before the last exon-exon junction, more than the 50 the rule allows,
+  so the ribosome stops while the junction complex is still downstream and
+  nonsense-mediated decay is predicted to degrade the transcript."* Beside it, why a rank
+  test could not have called it at all.
+
+  Two pieces of that are in the package rather than the page, so they are tested:
+  `consequence.describe` turns a prediction into that sentence for every one of the eight
+  classes, and `plotting.plot_event_psi` draws the replicates. `run_demo` now also
+  detects events, tests them, and predicts consequences, so the page is presentation only.
+
 - **Fourteen property-based tests, and `hypothesis` in the `dev` extra.** The README
   described the suite as "unit + property + end-to-end". Nineteen tests had
   property-shaped names, but every one asserted an invariant on a hand-picked input —
@@ -255,6 +274,10 @@ All notable changes to this project are documented here. The format is based on
   before it failed none.
 
 ### Fixed
+- **`CONSEQUENCE_CLASSES` lived in a test file.** The set of things the consequence
+  layer can say was defined in `tests/test_consequence_pipeline.py` and nowhere in the
+  package, so anything exhaustive over the eight classes had no list to be exhaustive
+  against. It is now in `consequence.py`, and the test imports it.
 - **The live demo was over its memory limit, and the README pointed at a dead URL.**
   Two separate things. The badge and the personal site both linked to the
   hash-generated address the app had before it moved to a custom subdomain, so the link

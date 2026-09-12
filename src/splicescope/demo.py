@@ -30,6 +30,15 @@ class DemoResult:
     scores: pd.DataFrame | None = None
     #: Why the classifier was skipped, in a sentence fit to show a reader.
     classifier_note: str | None = None
+    #: SE / MXE / A5SS / A3SS events, and their differential inclusion between groups.
+    events: pd.DataFrame | None = None
+    #: Per-sample PSI for every event, which is what a reader has to see to believe a call.
+    event_psi: pd.DataFrame | None = None
+    event_differential: pd.DataFrame | None = None
+    #: ``{sample: condition}``, so a caller can split the PSI by group.
+    groups: dict[str, str] | None = None
+    #: What each cassette exon does to the protein it lands in: frame, PTC, NMD.
+    consequences: pd.DataFrame | None = None
 
 
 def run_demo(
@@ -40,6 +49,7 @@ def run_demo(
     seed: int = 11,
     min_reads: int = 5,
     n_estimators: int = 300,
+    with_consequences: bool = True,
 ) -> DemoResult:
     """Simulate a dataset and run annotation, Ψ, the differential test and the classifier.
 
@@ -48,6 +58,11 @@ def run_demo(
     label noise is a perfectly reasonable thing to ask for, and the junction classes and
     differential results are still worth showing. :attr:`DemoResult.classifier_note` then
     says why the rest is absent.
+
+    ``with_consequences`` also detects events and predicts what each cassette exon does
+    to the protein — the part that answers *so what?* about a cryptic junction. It needs
+    a genome, so the simulated dataset is written to a temporary directory and read back
+    through the same reader a real run uses.
 
     ``n_estimators`` is exposed only so that a test sweeping many parameter combinations
     does not have to train a full forest for each; the dashboard leaves it alone.
@@ -88,4 +103,39 @@ def run_demo(
     result.metrics = clf.evaluate(result.features)
     result.importances = clf.importances
     result.scores = clf.score_table(result.features)
+    if with_consequences:
+        _add_events_and_consequences(result, ds, annotated, min_reads, seed)
     return result
+
+
+def _add_events_and_consequences(result, ds, annotated, min_reads: int, seed: int) -> None:
+    """Detect events, test them, and predict what the cassette exons do to the protein."""
+    import tempfile
+
+    from .consequence import GenomeFasta, annotate_consequences, load_transcripts
+    from .diff import differential_splicing
+    from .events import detect_events, event_psi
+    from .simulate import write_dataset
+
+    events = detect_events(annotated)
+    if events.empty:
+        return
+    result.events = events
+    result.groups = dict(ds.groups)
+    psi = event_psi(annotated, events, min_reads=min_reads)
+    result.event_psi = psi
+    result.event_differential = differential_splicing(
+        psi, ds.groups, value="psi", key=["event_id"]
+    )
+
+    cassettes = events[events["event_type"] == "SE"]
+    if cassettes.empty:
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        outdir = write_dataset(ds, tmp, seed=seed)
+        transcripts = load_transcripts(outdir / "annotation.gtf")
+        with GenomeFasta(outdir / "genome.fa") as fasta:
+            result.consequences = annotate_consequences(
+                cassettes.copy(), transcripts, fasta,
+                start_col="exon_start", end_col="exon_end",
+            )

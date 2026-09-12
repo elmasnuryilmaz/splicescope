@@ -559,3 +559,68 @@ def test_the_reported_stop_offset_is_on_the_scale_of_the_event():
     shifted = _nmd_from_downstream(sequence, [114, 90], frame=0, offset_before=300)
     assert shifted[0] == plain[0] + 300
     assert shifted[1:] == plain[1:], "only the offset moves; the distance and call do not"
+
+
+def test_every_consequence_class_is_explained_in_a_sentence():
+    """The table says `ptc_nmd`, `insert_length=61`, `distance_to_last_junction=395`.
+    That is an answer only to a reader who already knows the rule, and the dashboard
+    shows it to people who do not."""
+    from splicescope.consequence import CONSEQUENCE_CLASSES, describe
+
+    base = dict(
+        transcript_id="T1", gene_name="G", insert_length=61, frame_offset=0,
+        frameshift=True, ptc_offset=23, distance_to_last_junction=395,
+        nmd_predicted=True,
+    )
+    for name in CONSEQUENCE_CLASSES:
+        sentence = describe({**base, "consequence_class": name})
+        assert sentence and sentence[0].isupper() and sentence.endswith("."), name
+        assert "consequence_class" not in sentence, f"{name}: it printed the column name"
+        assert len(sentence.split()) > 8, f"{name}: too terse to explain anything"
+
+
+def test_the_fifty_nucleotide_rule_is_stated_in_words_both_ways():
+    from splicescope.consequence import describe
+
+    base = dict(insert_length=61, frameshift=True, ptc_offset=23, nmd_predicted=True)
+    decayed = describe(
+        {**base, "consequence_class": "ptc_nmd", "distance_to_last_junction": 395}
+    )
+    assert "395" in decayed and "50" in decayed
+    assert "more than" in decayed and "decay" in decayed
+
+    escaped = describe(
+        {**base, "consequence_class": "ptc_escape", "distance_to_last_junction": 20}
+    )
+    assert "20" in escaped and "within the 50" in escaped
+    assert "truncated protein" in escaped
+
+
+def test_a_stop_in_the_final_exon_is_explained_by_the_missing_junction():
+    """Not "the distance was too small" — there is no junction downstream at all, which
+    is the last-exon exception read literally."""
+    from splicescope.consequence import describe
+
+    sentence = describe(
+        {
+            "consequence_class": "ptc_escape", "insert_length": 61, "frameshift": True,
+            "ptc_offset": 104, "distance_to_last_junction": None, "nmd_predicted": False,
+        }
+    )
+    assert "final exon" in sentence
+    assert "no exon-exon junction downstream" in sentence
+    assert "truncated protein" in sentence
+
+
+def test_a_removed_stretch_is_described_as_removed():
+    """A splice-site shift that truncates an exon carries a negative insert length."""
+    from splicescope.consequence import describe
+
+    sentence = describe(
+        {
+            "consequence_class": "exon_truncation", "insert_length": -20,
+            "frameshift": True, "ptc_offset": None,
+            "distance_to_last_junction": None, "nmd_predicted": False,
+        }
+    )
+    assert sentence.startswith("Removing these 20 nucleotides")

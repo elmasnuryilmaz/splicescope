@@ -133,3 +133,51 @@ def test_savefig_releases_the_figure_so_pipelines_do_not_leak(tmp_path):
     plotting.savefig(fig, tmp_path / "kept.png", close=False)
     assert fig.number in plotting.plt.get_fignums()
     plotting.plt.close(fig)
+
+
+def test_event_psi_shows_every_replicate_and_both_group_means():
+    """The number a differential test reports is a summary; this is the measurement
+    behind it. A reader who cannot see the replicates has to take ΔΨ on trust."""
+    import matplotlib.pyplot as plt
+    import pandas as pd
+
+    from splicescope.plotting import plot_event_psi
+
+    psi = pd.DataFrame(
+        {
+            "event_id": ["E1"] * 6,
+            "sample": ["C1", "C2", "C3", "K1", "K2", "K3"],
+            "psi": [0.04, 0.05, 0.03, 0.22, 0.26, 0.24],
+        }
+    )
+    groups = {"C1": "ctrl", "C2": "ctrl", "C3": "ctrl", "K1": "kd", "K2": "kd", "K3": "kd"}
+
+    fig, ax = plt.subplots()
+    plot_event_psi(psi, groups, ax=ax)
+    points = [c for c in ax.collections if len(getattr(c, "get_offsets", lambda: [])())]
+    plotted = sum(len(c.get_offsets()) for c in points)
+    assert plotted >= 6, "every replicate is drawn, not just a mean"
+    assert [t.get_text() for t in ax.get_xticklabels()] == ["ctrl", "kd"]
+    assert ax.get_ylabel().startswith("Ψ")
+    plt.close(fig)
+
+
+def test_event_psi_ignores_a_sample_the_design_does_not_name():
+    """A Ψ table can carry a sample the groups file left out; it belongs to neither
+    condition and must not be drawn under one of them."""
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import pandas as pd
+
+    from splicescope.plotting import plot_event_psi
+
+    psi = pd.DataFrame(
+        {"event_id": ["E1"] * 3, "sample": ["C1", "K1", "STRAY"], "psi": [0.1, 0.5, 0.9]}
+    )
+    fig, ax = plt.subplots()
+    plot_event_psi(psi, {"C1": "ctrl", "K1": "kd"}, ax=ax)
+    drawn = np.concatenate(
+        [c.get_offsets()[:, 1] for c in ax.collections if len(c.get_offsets())]
+    )
+    assert 0.9 not in set(np.round(drawn, 6)), "the unnamed sample was plotted anyway"
+    plt.close(fig)

@@ -59,6 +59,22 @@ EXON_TRUNCATION = "exon_truncation"
 NON_CODING_HOST = "non_coding_host"
 NO_HOST = "no_host_transcript"
 
+#: Every value ``consequence_class`` can take. Named here rather than in a test, so that
+#: anything exhaustive over them — :func:`describe`, a colour map, a summary plot —
+#: cannot silently miss one that is added later.
+CONSEQUENCE_CLASSES = frozenset(
+    {
+        PTC_NMD,
+        PTC_ESCAPE,
+        FRAMESHIFT,
+        IN_FRAME,
+        UTR_INSERTION,
+        EXON_TRUNCATION,
+        NON_CODING_HOST,
+        NO_HOST,
+    }
+)
+
 #: Classes in which the event is expected to reduce functional protein.
 PROTEIN_DISRUPTING = (PTC_NMD, PTC_ESCAPE, FRAMESHIFT, EXON_TRUNCATION)
 
@@ -797,3 +813,93 @@ __all__ = [
     "predict_consequence",
     "reverse_complement",
 ]
+
+
+def describe(row) -> str:
+    """One sentence saying what a predicted consequence means, for a reader.
+
+    The table says ``ptc_nmd``, ``insert_length=61``, ``distance_to_last_junction=395``.
+    That is the answer, but only to someone who already knows the rule. This spells it
+    out: what the event adds or removes, whether the reading frame survives, where the
+    first premature stop falls, and why 50 nucleotides decides the transcript's fate.
+
+    Accepts anything with the fields of :class:`Consequence` — the dataclass itself, or
+    a row of the table :func:`annotate_consequences` returns.
+    """
+
+    def field(name, default=None):
+        value = row[name] if hasattr(row, "keys") and name in row else getattr(row, name, default)
+        return default if value is None or value != value else value
+
+    kind = field("consequence_class", "")
+    length = int(field("insert_length", 0) or 0)
+    span = abs(length)
+    removed = length < 0
+    verb = "Removing" if removed else "Including"
+    noun = "nucleotides" if span != 1 else "nucleotide"
+
+    if kind == NO_HOST:
+        return (
+            "No annotated transcript has an intron containing this event, so there is no "
+            "reading frame to place it in and nothing can be said about the protein."
+        )
+    if kind == NON_CODING_HOST:
+        return (
+            f"The transcript that hosts this event has no annotated coding sequence, so "
+            f"the {span} {noun} change nothing about a protein."
+        )
+    if kind == UTR_INSERTION:
+        return (
+            f"The event falls outside the coding sequence, in an untranslated region, so "
+            f"the protein is unchanged whatever happens to the {span} {noun}."
+        )
+    if kind == IN_FRAME:
+        return (
+            f"{verb} these {span} {noun} is a whole number of codons, so the reading frame "
+            f"survives and the protein simply {'loses' if removed else 'gains'} "
+            f"{span // 3} amino acids."
+        )
+    if kind == EXON_TRUNCATION:
+        return (
+            f"{verb} these {span} {noun} shortens the protein, but the first stop codon "
+            "downstream is the one the transcript always ended at — the protein is "
+            "shorter, not prematurely terminated."
+        )
+    if kind == FRAMESHIFT:
+        return (
+            f"{verb} these {span} {noun} shifts the reading frame, and no stop codon "
+            "appears before the point at which the protein natively ends. Everything "
+            "downstream is translated in the wrong frame."
+        )
+
+    offset = field("ptc_offset")
+    distance = field("distance_to_last_junction")
+    frame = " shifts the reading frame, and" if field("frameshift", False) else ", and"
+    where = ""
+    if offset is not None:
+        unit = "nucleotide" if offset == 1 else "nucleotides"
+        where = f" {int(offset)} {unit} in"
+    if kind == PTC_NMD:
+        return (
+            f"{verb} these {span} {noun}{frame} the first premature stop codon appears"
+            f"{where}. It sits {int(distance)} nucleotides before the last exon-exon "
+            f"junction, more than the {NMD_DISTANCE_RULE} the rule allows, so the "
+            "ribosome stops while the junction complex is still downstream and "
+            "nonsense-mediated decay is predicted to degrade the transcript."
+        )
+    if kind == PTC_ESCAPE:
+        if distance is None:
+            # the last-exon exception: decay needs a junction downstream of the stop
+            return (
+                f"{verb} these {span} {noun}{frame} the first premature stop codon "
+                f"appears{where} — in the final exon, with no exon-exon junction "
+                "downstream of it. Decay needs one, so the transcript survives and a "
+                "truncated protein is made instead."
+            )
+        return (
+            f"{verb} these {span} {noun}{frame} the first premature stop codon appears"
+            f"{where}. It sits only {int(distance)} nucleotides before the last exon-exon "
+            f"junction, within the {NMD_DISTANCE_RULE} the rule allows, so decay is not "
+            "triggered and a truncated protein is made instead."
+        )
+    return f"{verb} these {span} {noun} has an effect this classifier does not name."

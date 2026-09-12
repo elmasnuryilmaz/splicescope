@@ -10,19 +10,16 @@ import pandas as pd
 import pytest
 
 from splicescope.cli import main
-from splicescope.consequence import STOP_CODONS, GenomeFasta, load_transcripts
-from splicescope.simulate import gene_exons, simulate_dataset, simulate_genome, write_dataset
 
-CONSEQUENCE_CLASSES = {
-    "ptc_nmd",
-    "ptc_escape",
-    "frameshift",
-    "exon_truncation",
-    "in_frame_insertion",
-    "utr_insertion",
-    "non_coding_host",
-    "no_host_transcript",
-}
+# CONSEQUENCE_CLASSES is the package's own list of what the classifier can say;
+# repeating it here would be a second source of truth for it.
+from splicescope.consequence import (
+    CONSEQUENCE_CLASSES,
+    STOP_CODONS,
+    GenomeFasta,
+    load_transcripts,
+)
+from splicescope.simulate import gene_exons, simulate_dataset, simulate_genome, write_dataset
 
 
 @pytest.fixture(scope="module")

@@ -37,26 +37,49 @@ def test_the_dashboard_renders_with_its_default_settings():
     assert [m.label for m in app.metric] == [
         "junctions tested",
         "significant (ΔΨ)",
-        "cryptic classifier ROC-AUC",
+        "cassette exons found",
+        "predicted to trigger decay",
     ]
-    assert app.metric[2].value != "—", "the classifier should have run on the defaults"
-    assert len(app.dataframe) == 1, "the ranked cryptic candidates"
+    assert int(app.metric[2].value) > 0, "the page is built around a cassette exon"
+    assert int(app.metric[3].value) > 0, "at least one should be predicted to trigger decay"
+    assert [s.value for s in app.subheader] == [
+        "One event, end to end",
+        "The whole dataset",
+        "Telling real cryptic junctions from noise",
+    ]
+    assert len(app.selectbox) == 1, "one event is chosen and shown in full"
+    assert app.table, "its numbers"
+    assert app.dataframe, "the ranked cryptic candidates"
     assert not app.info
 
 
-def test_the_sliders_that_used_to_crash_the_page_now_explain_themselves():
+def test_the_chosen_event_is_explained_in_words_not_only_in_columns():
+    """The point of the page. A table saying `ptc_nmd`, `insert_length=61`,
+    `distance_to_last_junction=395` is an answer only to someone who already knows the
+    rule; the page has to say what it means."""
+    app = _run()
+    prose = " ".join(m.value for m in app.markdown) + " ".join(
+        getattr(w, "value", "") for w in app.get("write")
+    )
+    assert "premature stop" in prose, "the event's consequence must be spelled out"
+    assert "nonsense-mediated decay" in prose or "truncated protein" in prose
+    # and the argument for the test it used
+    assert "Mann-Whitney" in prose and "count-based" in prose
+
+
+def test_the_sliders_that_leave_nothing_to_show_explain_themselves():
     """Sliders 0-3 are genes, replicates, cryptic fraction and label noise. The minimum
-    cryptic fraction with no label noise leaves one class, which raised `IndexError`
-    from inside `predict_proba` and put a traceback on a public page."""
+    cryptic fraction with no label noise leaves no cassette exon to walk through and one
+    class for the classifier. Both used to be failures; both are now sentences."""
     app = _run({0: 5, 1: 3, 2: 0.1, 3: 0.0})
     assert not app.exception, app.exception
     assert not app.error, [e.value for e in app.error]
-    assert app.info, "the page must say why the classifier is missing"
-    assert "no two classes to separate" in app.info[0].value
-    # and the rest of the page is still there
-    assert app.metric[2].value == "—"
-    assert len(app.metric) == 3
-    assert not app.dataframe
+
+    messages = " ".join(i.value for i in app.info)
+    assert "No cassette exon was detected" in messages
+    assert "no two classes to separate" in messages
+    assert not app.selectbox, "nothing to pick from"
+    assert int(app.metric[2].value) == 0
 
 
 def test_the_thresholds_change_the_significant_count_without_reanalysing():

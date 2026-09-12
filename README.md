@@ -149,10 +149,14 @@ rather than only asserted.
   self-contained demo; real data goes in as
   `--sj_dir … --gtf … --groups … [--genome …]`, each staged independently. CI runs all
   three paths on every push.
-- **`app/streamlit_app.py`** — an interactive dashboard to browse junction classes,
-  the volcano and ranked cryptic candidates (`pip install -e ".[app]"` then
-  `streamlit run app/streamlit_app.py`). Deploy-ready for Streamlit Community Cloud —
-  point it at `app/streamlit_app.py`. The analysis behind it is
+- **`app/streamlit_app.py`** — an interactive dashboard that answers one question end
+  to end: a knockdown switches on junctions the annotation does not contain, so which of
+  them are real and what do they do to the protein? It picks a cryptic cassette exon,
+  shows its Ψ in every replicate, and says in words what including it does — *"the first
+  premature stop appears 63 nucleotides in, 355 before the last exon-exon junction, more
+  than the 50 the rule allows, so nonsense-mediated decay is predicted"* — beside the
+  reason a rank test could not have called it. (`pip install -e ".[app]"` then
+  `streamlit run app/streamlit_app.py`.) The analysis behind it is
   `splicescope.demo.run_demo`, which is also the shortest way to run the whole pipeline
   on synthetic data from Python; the page itself is presentation only, and CI renders it
   headlessly on every push.
@@ -160,7 +164,7 @@ rather than only asserted.
 ## Testing
 
 ```bash
-pytest            # 268 tests: unit + property-based + end-to-end CLI runs
+pytest            # 275 tests: unit + property-based + end-to-end CLI runs
 ruff check .      # lint
 pytest --cov=splicescope   # 97 % of statements; CI fails below 90 %
 ```

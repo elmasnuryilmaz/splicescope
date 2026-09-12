@@ -6,6 +6,38 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+- **The weighted ORA is 14× faster, and gives the same answers.** `p/(1-p)` does not
+  depend on which gene set is being tested, but it was being recomputed for every
+  background gene for every set: one division per (gene × set), 95.7 million of them on a
+  human-sized run. It is now computed once per run, and each set's *outside* sum comes
+  from the total by complement, so a set costs its own size rather than the whole
+  background. Measured on a 20 000-gene background with the hits drawn in proportion to
+  opportunity:
+
+  | gene sets | before | after |
+  |---|---|---|
+  | 5 000 (≈ MSigDB H + C2) | 10.8 s | 0.9 s |
+  | 16 000 (≈ MSigDB C5) | 35.1 s | 2.5 s |
+
+  The plain hypergeometric takes 1.5 s on the same input, so the correction now costs
+  1.8× the uncorrected test instead of 24×. This matters because `weight_by_units=True`
+  is the default. Across 480 gene sets spanning 1 gene to all-but-one of the background,
+  the largest disagreement with the old arithmetic is 3.5e-14 relative — the two differ
+  only in floating-point noise. The smaller side is always the one summed outright, so
+  the subtraction never has to recover a small number from two near-equal ones.
+
+### Fixed
+- **A gene set with a member outside the background no longer raises `KeyError`.** Only
+  genes that were tested can be drawn, so such a member is simply not in the set for the
+  purpose of the odds; it was being looked up in the propensity table regardless.
+- **Two version spellings of one accession have their opportunity added up.** A merged
+  annotation can carry `ENSG….16` and `ENSG….17`; the background already counts them as
+  one gene, but the weight table kept whichever came last, under-weighting exactly the
+  genes that are split.
+- Removed an unreachable fallback in `selection_propensity` — with a non-empty
+  background every gene lands in a bin, so the code it guarded could never run.
+
 ## [0.9.1] — 2026-09-12
 
 ### Added

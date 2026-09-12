@@ -388,3 +388,93 @@ def test_one_high_opportunity_gene_cannot_destroy_a_real_enrichment():
     assert after["pvalue"] < 1e-3, (
         f"one gene moved p from {before.pvalue:.1e} to {after.pvalue:.1e}"
     )
+
+
+def test_the_odds_table_is_built_once_for_the_whole_collection(monkeypatch):
+    """The p/(1-p) of every background gene does not depend on which set is being
+    tested, so it must be computed once, not once per set. Rebuilding it per set is
+    what made the weighted path cost one division per background gene per gene set:
+    on a human background and an MSigDB-sized collection, 35 s against 2.5 s."""
+    from splicescope import enrich
+
+    calls = []
+    original = enrich._odds_table
+    monkeypatch.setattr(
+        enrich, "_odds_table", lambda bg, prop: (calls.append(len(bg)), original(bg, prop))[1]
+    )
+
+    genes = [f"G{i:04d}" for i in range(300)]
+    weights = {g: float(i % 17 + 1) for i, g in enumerate(genes)}
+    hits = genes[:60]
+    sets = {f"S{j}": genes[j : j + 40] for j in range(120)}
+
+    result = enrich.over_representation(hits, genes, sets, weights=weights)
+    assert not result.empty
+    assert calls == [300], f"the odds table was rebuilt {len(calls)} times"
+
+
+def test_taking_the_outside_sum_by_complement_changes_no_answer():
+    """The outside sum is the total minus the inside one. That is only safe if the
+    subtraction never has to produce a *small* number out of two near-equal ones, which
+    is why the smaller side is always the one summed outright."""
+    from splicescope.enrich import _bias_odds, _odds_table, selection_propensity
+
+    rng = np.random.default_rng(11)
+    genes = [f"G{i:04d}" for i in range(600)]
+    units = np.maximum(1, rng.lognormal(1.5, 1.0, size=600).astype(int))
+    weights = dict(zip(genes, units.astype(float), strict=True))
+    hits = [g for g, u in zip(genes, units, strict=True) if rng.random() < 1 - 0.97**u]
+    propensity = selection_propensity(genes, hits, weights)
+    bg = set(genes)
+    table = _odds_table(bg, propensity)
+
+    def summed_both_ways(in_set):
+        inside = sum(propensity[g] / (1 - propensity[g]) for g in in_set) / len(in_set)
+        rest = bg - in_set
+        beyond = sum(propensity[g] / (1 - propensity[g]) for g in rest) / len(rest)
+        return inside / beyond
+
+    # one gene, half the background, and the case a complement is worst at: all but one
+    for size in (1, 2, 300, 598, 599):
+        in_set = set(rng.choice(genes, size=size, replace=False))
+        assert _bias_odds(in_set, bg, None, table) == pytest.approx(
+            summed_both_ways(in_set), rel=1e-9
+        ), f"the two disagree for a set of {size}"
+
+
+def test_a_gene_set_member_missing_from_the_background_is_not_a_crash():
+    """Only genes that were tested can be drawn, so a set member outside the background
+    is simply not in the set for this purpose. Indexing the propensity by it raised
+    KeyError before."""
+    from splicescope.enrich import _bias_odds, _odds_table
+
+    propensity = {"A": 0.4, "B": 0.2, "C": 0.2}
+    table = _odds_table(set(propensity), propensity)
+    assert _bias_odds({"A", "ZZZ"}, set(propensity), None, table) == pytest.approx(
+        _bias_odds({"A"}, set(propensity), None, table)
+    )
+    assert _bias_odds({"ZZZ"}, set(propensity), None, table) is None
+
+
+def test_two_spellings_of_one_gene_have_their_opportunity_added_up(monkeypatch):
+    """A merged annotation can carry one accession at two versions. The background
+    already counts those as one gene, so its opportunity is the sum of both. Keeping
+    whichever the dictionary yielded last under-weights exactly the genes that are
+    split, and can drop one into a bin of far less active genes."""
+    from splicescope import enrich
+
+    seen = {}
+    original = enrich.selection_propensity
+    monkeypatch.setattr(
+        enrich,
+        "selection_propensity",
+        lambda bg, hits, w, **kw: (seen.update(w), original(bg, hits, w, **kw))[1],
+    )
+
+    genes = [f"ENSG{i:011d}.1" for i in range(30)]
+    weights = {g: 1.0 for g in genes}
+    weights["ENSG00000000000.1"] = 20.0
+    weights["ENSG00000000000.7"] = 30.0  # the same gene, a second version
+
+    enrich.over_representation(genes[:10], genes, {"S": genes[:8]}, weights=weights)
+    assert seen["ENSG00000000000"] == 50.0, "the two spellings were not added up"

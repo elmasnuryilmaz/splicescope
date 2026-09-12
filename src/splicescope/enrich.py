@@ -13,6 +13,7 @@ enrichment needs real annotations rather than synthetic ones.
 
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Iterable, Mapping, Sequence
 
@@ -80,7 +81,6 @@ def selection_propensity(
     hit_set = {normalize_gene_id(h) for h in hits}
     if not bg:
         return {}
-    baseline = len(hit_set & set(bg)) / len(bg)
 
     # Bin by weight, never splitting a tied group. Most genes contribute exactly one
     # tested unit, so a plain equal-count split would cut that block at an arbitrary
@@ -105,8 +105,6 @@ def selection_propensity(
 
     propensity: dict[str, float] = {}
     for members in chunks:
-        if not members:
-            continue
         observed = sum(1 for g in members if g in hit_set)
         # Shrink towards 1/2 by the bin's own size, so a small bin cannot assert certainty.
         # A 7-gene bin whose members are all hits gives 0.94 (odds 15), not 1 (odds 1e6);
@@ -114,13 +112,21 @@ def selection_propensity(
         rate = (observed + _PSEUDO_HITS) / (len(members) + _PSEUDO_TOTAL)
         for gene in members:
             propensity[gene] = rate
-    if not propensity:
-        smoothed = (baseline * len(bg) + _PSEUDO_HITS) / (len(bg) + _PSEUDO_TOTAL)
-        return dict.fromkeys(bg, smoothed)
     return propensity
 
 
-def _bias_odds(in_set: set, bg: set, propensity: Mapping[str, float]) -> float | None:
+def _odds_table(bg: set, propensity: Mapping[str, float]) -> tuple[dict[str, float], float]:
+    """``p/(1-p)`` per background gene and their exact total, built once per run."""
+    odds = {g: propensity[g] / (1.0 - propensity[g]) for g in bg}
+    return odds, math.fsum(odds.values())
+
+
+def _bias_odds(
+    in_set: set,
+    bg: set,
+    propensity: Mapping[str, float] | None,
+    table: tuple[dict[str, float], float] | None = None,
+) -> float | None:
     """Wallenius odds for a gene set: how much likelier its genes were to be drawn.
 
     Wallenius' ``ω`` is a ratio of sampling *weights*, so the quantity to average is the
@@ -136,14 +142,30 @@ def _bias_odds(in_set: set, bg: set, propensity: Mapping[str, float]) -> float |
     since the same genes sit in the denominator for every other set, one of them rewrote
     the whole table.
     """
-    outside = bg - in_set
-    if not in_set or not outside:
+    odds, total = table if table is not None else _odds_table(bg, propensity)
+    members = in_set & bg
+    n_in = len(members)
+    n_out = len(bg) - n_in
+    if not n_in or not n_out:
         return None
-    inside = sum(propensity[g] / (1.0 - propensity[g]) for g in in_set) / len(in_set)
-    beyond = sum(propensity[g] / (1.0 - propensity[g]) for g in outside) / len(outside)
-    if beyond <= 0 or inside <= 0:
+
+    # Sum the smaller side and take the larger by complement. Summing both sides
+    # outright costs one division per background gene *per gene set*, which on a
+    # human background and an MSigDB-sized collection is the whole runtime; the
+    # complement makes each set cost its own size instead. Always complementing the
+    # larger side also keeps it accurate: recovering a small sum by subtracting two
+    # nearly equal totals is where floating point loses its digits, and here the
+    # subtraction only ever produces the dominant one.
+    if n_in <= n_out:
+        inside_sum = math.fsum(odds[g] for g in members)
+        beyond_sum = total - inside_sum
+    else:
+        beyond_sum = math.fsum(odds[g] for g in bg - members)
+        inside_sum = total - beyond_sum
+
+    if inside_sum <= 0 or beyond_sum <= 0:
         return None
-    return inside / beyond
+    return (inside_sum / n_in) / (beyond_sum / n_out)
 
 
 def over_representation(
@@ -183,11 +205,18 @@ def over_representation(
     bg = set(bg_index)
     hit_set = {normalize_gene_id(h) for h in hits} & bg
     M, N = len(bg), len(hit_set)
-    propensity = (
-        selection_propensity(bg, hit_set, {normalize_gene_id(g): w for g, w in weights.items()})
-        if weights
-        else None
-    )
+    table = None
+    if weights:
+        # Two spellings of one gene (``ENSG….16`` and ``ENSG….17``) are one gene in the
+        # background, so they are one gene here too, and its opportunity is their sum —
+        # keeping only the last would under-weight exactly the genes a merged annotation
+        # splits.
+        merged: dict[str, float] = {}
+        for gene, weight in weights.items():
+            key = normalize_gene_id(gene)
+            merged[key] = merged.get(key, 0.0) + float(weight)
+        propensity = selection_propensity(bg, hit_set, merged)
+        table = _odds_table(bg, propensity)
     if M == 0 or N == 0:
         return pd.DataFrame(
             columns=[
@@ -206,7 +235,7 @@ def over_representation(
         k = len(overlap)
         if k == 0:
             continue
-        odds = _bias_odds(in_bg, bg, propensity) if propensity else None
+        odds = _bias_odds(in_bg, bg, None, table) if table else None
         if odds is None:
             p = float(stats.hypergeom.sf(k - 1, M, n, N))
         else:

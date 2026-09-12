@@ -55,6 +55,16 @@ All notable changes to this project are documented here. The format is based on
   what the previous code produced.
 
 ### Added
+- **`constraints-oldest.txt` and a CI job that installs it.** Every dependency has a
+  declared floor in `pyproject.toml`, and the CI matrix resolves to the newest of
+  everything on every Python it tests, so nothing ever checked that the floor was real —
+  a promise to anyone installing into an existing environment. It is real: the whole
+  suite passes on numpy 1.23.5, pandas 1.5.0, scipy 1.9.3, scikit-learn 1.2.0 and
+  matplotlib 3.6.0, and equally on pandas 2.3.3 and pandas 3.0.5. (scipy is pinned one
+  patch above its floor because 1.9.0 ships no wheel for several platforms.) A test keeps
+  the pins in step with the declared specifiers in both directions: raise a floor above
+  its pin, or add a dependency without one, and it says which.
+
 - **A `docs` extra, so the executed tutorial can actually be re-executed.** Rebuilding
   `examples/tutorial.ipynb` and the figures in `docs/` needs `nbformat`, `nbclient`,
   `ipykernel` and `pillow`, and none of them was declared anywhere. A notebook advertised

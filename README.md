@@ -160,13 +160,16 @@ rather than only asserted.
 ## Testing
 
 ```bash
-pytest            # 230 tests: unit + property + end-to-end CLI runs
+pytest            # 231 tests: unit + property + end-to-end CLI runs
 ruff check .      # lint
 ```
 
-CI runs the suite and the linter on every push, plus the Nextflow pipeline on all three
-of its input paths and a headless render of the Streamlit dashboard (see the badge
-above).
+CI runs the suite and the linter on every push against Python 3.10-3.13, plus the
+Nextflow pipeline on all three of its input paths and a headless render of the Streamlit
+dashboard (see the badge above). A separate job installs the *oldest* dependency versions
+`pyproject.toml` claims to support — pinned in `constraints-oldest.txt` — because a matrix
+that always resolves to the newest of everything never checks that the declared floor is
+real. It is: the suite passes on pandas 1.5.0 with numpy 1.23.5, and on pandas 3.
 
 A green suite says the tests pass, not that they would fail if the code broke. So the
 code is deliberately broken 85 ways and the suite has to notice:

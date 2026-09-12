@@ -1,0 +1,14 @@
+# The oldest dependency versions pyproject.toml claims to support, pinned so CI can
+# actually run against them. A declared floor nobody installs is a promise, not a fact:
+# the matrix otherwise resolves to the newest of everything on every Python it tests.
+#
+# Verified: the whole suite passes here. scipy is pinned one patch above its declared
+# floor because 1.9.0 ships no wheel for several platforms and building it from source
+# is not something a test job should do.
+#
+#   pip install -e . -c constraints-oldest.txt
+numpy==1.23.5
+pandas==1.5.0
+scipy==1.9.3
+matplotlib==3.6.0
+scikit-learn==1.2.0

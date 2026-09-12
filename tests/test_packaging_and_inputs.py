@@ -206,3 +206,41 @@ def test_stars_strand_and_motif_codes_are_read_as_star_writes_them(tmp_path):
     assert list(df["count"]) == [30, 25, 7, 9]
     assert list(df["sample"]) == ["S1"] * 4
     assert pd.api.types.is_integer_dtype(df["count"])
+
+
+def test_the_oldest_constraints_match_the_declared_floors():
+    """`constraints-oldest.txt` is what CI installs to prove the declared support range
+    is real. It only proves anything while it stays in step with `pyproject.toml`: raise
+    a floor without repinning and the job silently tests a version the package no longer
+    claims to support, or a dependency added without a pin is never exercised at its
+    floor at all."""
+    from packaging.requirements import Requirement
+    from packaging.version import Version
+
+    try:  # tomllib is stdlib from 3.11; pytest brings tomli on 3.10, which we support
+        import tomllib
+    except ModuleNotFoundError:  # pragma: no cover - only on Python 3.10
+        import tomli as tomllib
+
+    declared = {
+        (r := Requirement(spec)).name: r.specifier
+        for spec in tomllib.loads((ROOT / "pyproject.toml").read_text())["project"][
+            "dependencies"
+        ]
+    }
+    pinned = {}
+    for line in (ROOT / "constraints-oldest.txt").read_text().splitlines():
+        line = line.split("#", 1)[0].strip()
+        if line:
+            name, _, version = line.partition("==")
+            assert version, f"constraints must pin exactly, got {line!r}"
+            pinned[name] = Version(version)
+
+    assert set(pinned) == set(declared), (
+        f"pinned but not declared: {sorted(set(pinned) - set(declared))}; "
+        f"declared but not pinned: {sorted(set(declared) - set(pinned))}"
+    )
+    for name, version in pinned.items():
+        assert declared[name].contains(version), (
+            f"{name}=={version} does not satisfy the declared {name}{declared[name]}"
+        )

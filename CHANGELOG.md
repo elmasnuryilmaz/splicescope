@@ -48,6 +48,24 @@ All notable changes to this project are documented here. The format is based on
   what the previous code produced.
 
 ### Added
+- **Thirteen tests for the features the classifier learns from.** Extending the
+  mutation survey to `cryptic.py` found **seven of eight** deliberate defects passing the
+  whole suite: the distance to the nearest known splice site searched only forwards from
+  the insertion point instead of both ways (turning a 50 nt shift into a 149 nt one),
+  only donors indexed as known sites, the intron length off by one, measured zeros
+  counted as supporting samples, the canonical-motif flag inverted, the minus-strand
+  canonical motif `CT/AC` dropped, and a junction's label taken as the minimum over its
+  rows rather than the maximum. A wrong feature does not make a model fail, it makes it
+  learn the wrong thing and report a good score for doing so. Each is now pinned in
+  `tests/test_cryptic_features.py` against one hand-built input whose expected values are
+  worked out from the coordinates rather than copied from the output.
+
+  `ml.py` gave up three more: `predict_proba` taking the column for *noise* instead of
+  the one for *cryptic*, which inverts every score a user reads while the score table's
+  own ordering stays self-consistent and `evaluate` reaches the probabilities by another
+  route; asking for more cross-validation folds than the rare class has members; and the
+  class weighting being dropped.
+
 - **The simulator reports the events it injected.** `SimulatedDataset.truth` is a table
   of every injected cryptic exon, A5SS, A3SS and MXE with its host intron and exon
   coordinates, and `write_dataset` writes it as `truth.tsv` beside the SJ files. Recall
@@ -66,7 +84,8 @@ All notable changes to this project are documented here. The format is based on
 
 - **Eleven tests for the rules the suite was not checking.** Found by mutation: change
   a line, run the suite, see whether anything fails. Thirty-seven deliberate defects were
-  introduced across every module and **thirteen of them passed all 165 tests**. Two are
+  introduced across the eight modules surveyed at that point, and **thirteen of them
+  passed all 165 tests**. Two are
   harmless by construction (a slice shorter than three characters can never equal a stop
   codon; a negative chi-square statistic yields the same p-value of 1) and the other
   eleven are now each pinned by a test. Four of them were outside the consequence and
@@ -128,6 +147,15 @@ All notable changes to this project are documented here. The format is based on
   before it failed none.
 
 ### Fixed
+- **The model card could describe a model that was never fitted.** Its `class_weight` was
+  the string `"balanced"` written into the card's own source rather than read from the
+  estimator, so removing the weighting from the pipeline left the card still claiming it.
+  A model card exists precisely so a reviewer need not take the method on trust, which
+  makes this the one thing it must not do. `class_weight` is now a field on the
+  classifier, the pipeline is built from it, and the card reports the fitted estimator's
+  own parameters, falling back to the field before a fit. It also reports the fold count
+  actually used, which `evaluate` lowers when the rare class has fewer members than
+  `n_splits`.
 - **The simulator no longer put two events in one intron.** It does not just crowd
   them, it changes what the reads mean. An MXE intron has its skipping junction
   suppressed, because mutually exclusive exons have no skipping isoform, so a cryptic

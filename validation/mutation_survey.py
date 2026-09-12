@@ -8,10 +8,12 @@ a rule the suite is not checking, and it is free to come back in the next refact
 
 Every mutation below was written as a realistic mistake rather than a random edit — an
 inclusive comparison where it should be strict, a distance measured from the wrong end of
-a codon, a correction applied to the wrong array. Thirteen of these passed all 165 tests
-when the survey was first run, including the 50-nucleotide rule the tool is built on,
-the last-exon exception, and whether the reported q-value is Benjamini-Hochberg-adjusted
-at all. Those are now covered.
+a codon, a correction applied to the wrong array. Twenty of these passed the suite as it
+stood when each was first tried, including the 50-nucleotide rule the tool is built on,
+the last-exon exception, whether the reported q-value is Benjamini-Hochberg-adjusted at
+all, and seven of the eight features the cryptic-junction classifier learns from. A wrong
+feature does not make a model fail; it makes it learn the wrong thing and report a good
+score for doing so. Those are now covered.
 
 Two mutants survive and are expected to: they are equivalent, not uncaught.
 
@@ -169,6 +171,62 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
      "caught"),
     ("events", "crowded anchors truncated to a single pair",
      "        plist = plist[:max_candidates]", "        plist = plist[:1]", "caught"),
+    # ---- cryptic: the features the classifier learns from -------------------------
+    ("cryptic", "nearest known site only searched to the right",
+     "    for j in (i - 1, i):", "    for j in (i,):", "caught"),
+    ("cryptic", "intron length off by one",
+     '"intron_length": int(end - start + 1),',
+     '"intron_length": int(end - start),', "caught"),
+    ("cryptic", "supporting samples counted including the zeros",
+     '"n_samples_support": int((counts > 0).sum()),',
+     '"n_samples_support": int((counts >= 0).sum()),', "caught"),
+    ("cryptic", "canonical-motif flag inverted",
+     '"canonical_motif": int(motif in _CANONICAL),',
+     '"canonical_motif": int(motif not in _CANONICAL),', "caught"),
+    ("cryptic", "the minus-strand canonical motif dropped",
+     '_CANONICAL = {"GT/AG", "CT/AC"}', '_CANONICAL = {"GT/AG"}', "caught"),
+    ("cryptic", "only donors indexed as known sites",
+     "sites.setdefault((chrom, strand), set()).update((d, a))",
+     "sites.setdefault((chrom, strand), set()).update((d,))", "caught"),
+    ("cryptic", "truth label taken as the minimum over samples",
+     'df.groupby(key, observed=True)["is_cryptic_truth"].max().reset_index(drop=True)',
+     'df.groupby(key, observed=True)["is_cryptic_truth"].min().reset_index(drop=True)',
+     "caught"),
+    ("cryptic", "novel_only keeps the annotated junctions instead",
+     '        df = df[df["sclass"] != "annotated"]',
+     '        df = df[df["sclass"] == "annotated"]', "caught"),
+    # ---- ml: the classifier and how it is assessed ---------------------------------
+    ("ml", "probability taken for the wrong class in evaluation",
+     'method="predict_proba", n_jobs=None\n        )[:, 1]',
+     'method="predict_proba", n_jobs=None\n        )[:, 0]', "caught"),
+    ("ml", "probability taken for the wrong class in prediction",
+     "        return self.pipeline.predict_proba(x)[:, 1]",
+     "        return self.pipeline.predict_proba(x)[:, 0]", "caught"),
+    ("ml", "ROC-AUC computed against inverted scores",
+     '"roc_auc": float(roc_auc_score(y, proba)),',
+     '"roc_auc": float(roc_auc_score(y, 1.0 - proba)),', "caught"),
+    ("ml", "more folds than the minority class has members",
+     "n_splits = min(self.n_splits, int(np.bincount(y).min()))",
+     "n_splits = max(self.n_splits, int(np.bincount(y).min()))", "caught"),
+    ("ml", "class imbalance left uncorrected",
+     '    class_weight: str | None = "balanced"',
+     "    class_weight: str | None = None", "caught"),
+    ("ml", "the model card repeats a literal instead of reading the model",
+     '            "hyperparameters": self._hyperparameters(),',
+     '            "hyperparameters": {"class_weight": "balanced"},', "caught"),
+    ("ml", "score table sorted least-likely first",
+     'return out.sort_values("cryptic_score", ascending=False)[',
+     'return out.sort_values("cryptic_score", ascending=True)[', "caught"),
+    # ---- cli ------------------------------------------------------------------------
+    ("cli", "splice-site shifts restricted to one of the two classes",
+     'SHIFT_CLASSES = ("novel_donor", "novel_acceptor")',
+     'SHIFT_CLASSES = ("novel_donor",)', "caught"),
+    ("cli", "junctions already explained by an event are not excluded",
+     "                & ~_junction_index(annotated).isin(_event_junctions(evs))",
+     "                & _junction_index(annotated).notna()", "caught"),
+    ("cli", "exon-level consequences run on every event type but SE",
+     '        table = events[events["event_type"] == "SE"].copy()',
+     '        table = events[events["event_type"] != "SE"].copy()', "caught"),
 ]
 
 

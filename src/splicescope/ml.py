@@ -34,6 +34,10 @@ class CrypticClassifier:
     n_estimators: int = 300
     random_state: int = 0
     n_splits: int = 5
+    #: Novel junctions are mostly artefactual, so the positive class is the rare one.
+    #: Held on the instance rather than written into the pipeline, so that the model
+    #: card reports the weighting that was actually used instead of a literal.
+    class_weight: str | None = "balanced"
     features: list[str] = field(default_factory=lambda: list(FEATURE_COLUMNS))
     pipeline: Pipeline | None = None
     cv_metrics: dict = field(default_factory=dict)
@@ -48,7 +52,7 @@ class CrypticClassifier:
                     RandomForestClassifier(
                         n_estimators=self.n_estimators,
                         random_state=self.random_state,
-                        class_weight="balanced",
+                        class_weight=self.class_weight,
                         n_jobs=-1,
                     ),
                 ),
@@ -116,16 +120,34 @@ class CrypticClassifier:
             cols + [c for c in out.columns if c not in cols]
         ].reset_index(drop=True)
 
+    def _hyperparameters(self) -> dict:
+        """What the model was actually built with.
+
+        Read from the fitted estimator when there is one. A card that repeats literals
+        from the source can go on reporting a setting the pipeline no longer has, which
+        is the one thing a model card must not do.
+        """
+        if self.pipeline is not None:
+            rf = self.pipeline.named_steps["rf"]
+            return {
+                "n_estimators": int(rf.n_estimators),
+                "class_weight": rf.class_weight,
+                "random_state": int(rf.random_state),
+                "n_splits": int(self.cv_metrics.get("n_splits", self.n_splits)),
+            }
+        return {
+            "n_estimators": self.n_estimators,
+            "class_weight": self.class_weight,
+            "random_state": self.random_state,
+            "n_splits": int(self.cv_metrics.get("n_splits", self.n_splits)),
+        }
+
     def model_card(self) -> dict:
         return {
             "model": "RandomForestClassifier (StandardScaler pipeline)",
             "task": "binary classification — true cryptic junction vs noise",
             "features": self.features,
-            "hyperparameters": {
-                "n_estimators": self.n_estimators,
-                "class_weight": "balanced",
-                "random_state": self.random_state,
-            },
+            "hyperparameters": self._hyperparameters(),
             "evaluation": "stratified k-fold cross-validation (no leakage)",
             "cv_metrics": self.cv_metrics,
             "permutation_importance": (

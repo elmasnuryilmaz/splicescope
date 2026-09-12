@@ -60,3 +60,74 @@ def test_the_injected_events_are_written_out_next_to_the_data(tmp_path):
     known = {(r.start, r.end) for r in ds.known.itertuples(index=False)}
     for row in written.itertuples(index=False):
         assert (row.intron_start, row.intron_end) in known, row
+
+
+def _separable_features(n_positive=20, n_negative=20, seed=0):
+    """A feature table the classifier cannot get wrong, so what is tested is the
+    plumbing rather than the learning."""
+    import numpy as np
+
+    from splicescope.cryptic import FEATURE_COLUMNS
+
+    rng = np.random.default_rng(seed)
+    frames = []
+    for label, n, count, support, motif in (
+        (1, n_positive, 5.0, 6, 1),
+        (0, n_negative, 1.0, 1, 0),
+    ):
+        block = pd.DataFrame(
+            {c: rng.normal(0.0, 0.1, n) for c in FEATURE_COLUMNS}
+        )
+        block["log_max_count"] = count + rng.normal(0, 0.05, n)
+        block["n_samples_support"] = support
+        block["canonical_motif"] = motif
+        block["is_cryptic_truth"] = label
+        frames.append(block)
+    return pd.concat(frames, ignore_index=True)
+
+
+def test_the_score_is_the_probability_of_being_cryptic_not_of_being_noise():
+    """`predict_proba` returns a column per class, and taking the wrong one inverts
+    every score. Nothing noticed: the score table's own ordering stays self-consistent
+    either way, and `evaluate` reaches the probabilities by a different route."""
+    feats = _separable_features()
+    clf = CrypticClassifier(n_estimators=50, random_state=0).fit(feats)
+
+    scores = clf.predict_proba(feats)
+    positive = scores[feats["is_cryptic_truth"] == 1]
+    negative = scores[feats["is_cryptic_truth"] == 0]
+    assert positive.min() > 0.5, "a known cryptic junction must score above a half"
+    assert negative.max() < 0.5, "a known artefact must score below it"
+    assert positive.mean() > negative.mean()
+
+    # and the same orientation must survive into the table a user reads
+    table = clf.score_table(feats)
+    assert table["cryptic_score"].iloc[0] > table["cryptic_score"].iloc[-1]
+
+
+def test_the_fold_count_cannot_exceed_the_rarer_class():
+    """True cryptic junctions are the rare class, and asking for more folds than there
+    are positives either throws from inside scikit-learn or silently evaluates on folds
+    with no positive in them."""
+    feats = _separable_features(n_positive=3, n_negative=30)
+    clf = CrypticClassifier(n_estimators=20, n_splits=5, random_state=0)
+    metrics = clf.evaluate(feats)
+    assert metrics["n_splits"] == 3
+    assert metrics["n_positive"] == 3
+
+
+def test_the_model_card_reports_the_model_that_was_actually_fitted():
+    """The card exists so a reviewer does not have to take the method on trust, which
+    it cannot do while it repeats literals from the source. `class_weight` was written
+    into it as the string "balanced" regardless of what the pipeline had."""
+    feats = _separable_features()
+    clf = CrypticClassifier(n_estimators=50, class_weight=None, random_state=3).fit(feats)
+
+    card = clf.model_card()["hyperparameters"]
+    fitted = clf.pipeline.named_steps["rf"]
+    assert card["class_weight"] == fitted.class_weight is None
+    assert card["n_estimators"] == fitted.n_estimators == 50
+    assert card["random_state"] == fitted.random_state == 3
+
+    balanced = CrypticClassifier(n_estimators=50, random_state=0).fit(feats)
+    assert balanced.model_card()["hyperparameters"]["class_weight"] == "balanced"

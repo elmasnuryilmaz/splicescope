@@ -157,7 +157,7 @@ rather than only asserted.
 ## Testing
 
 ```bash
-pytest            # 179 tests: unit + property + end-to-end CLI runs
+pytest            # 192 tests: unit + property + end-to-end CLI runs
 ruff check .      # lint
 ```
 
@@ -165,7 +165,7 @@ CI runs the suite and the linter on every push, plus the Nextflow pipeline on al
 of its input paths (see the badge above).
 
 A green suite says the tests pass, not that they would fail if the code broke. So the
-code is deliberately broken 44 ways and the suite has to notice:
+code is deliberately broken 62 ways and the suite has to notice:
 
 ```bash
 python validation/mutation_survey.py
@@ -173,12 +173,14 @@ python validation/mutation_survey.py
 
 Each mutation is a mistake someone could plausibly make — an inclusive comparison where
 it should be strict, a distance measured from the wrong end of a codon, a correction
-applied to the wrong array — and the script reports any the suite fails to catch. When
-the survey was first run, **13 of these passed all 165 tests**, among them the
-50-nucleotide rule this tool's NMD calls rest on, the last-exon exception, and whether
-the reported q-value was Benjamini-Hochberg-adjusted at all. Those are covered now. Two
-mutants still survive, and are meant to: they provably cannot change any answer, and the
-script says which and why. It also runs weekly in CI.
+applied to the wrong array — and the script reports any the suite fails to catch.
+**20 of these passed the suite** as it stood when each was first tried, among them the
+50-nucleotide rule this tool's NMD calls rest on, the last-exon exception, whether the
+reported q-value was Benjamini-Hochberg-adjusted at all, and seven of the eight features
+the cryptic-junction classifier learns from. A wrong feature does not make a model fail;
+it makes it learn the wrong thing and report a good score for doing so. Those are covered
+now. Two mutants still survive, and are meant to: they provably cannot change any answer,
+and the script says which and why. It also runs weekly in CI.
 
 ## The differential test
 

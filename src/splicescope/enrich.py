@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import math
 import re
+import warnings
 from collections.abc import Iterable, Mapping, Sequence
 
 import pandas as pd
@@ -262,6 +263,30 @@ def over_representation(
     return res.sort_values(["qvalue", "pvalue"]).reset_index(drop=True)
 
 
+def _warn_if_nothing_can_be_tested(background, members, gene_sets) -> None:
+    """Say so when no gene set names a gene that was tested.
+
+    With no identifier in common nothing can be tested, and an empty result reads as
+    "no pathway is enriched" — a conclusion, where the truth is that the question was
+    never asked. Gene-set files are keyed by symbols about as often as by accessions,
+    and a GMT for the wrong organism looks exactly like one for the right one.
+    """
+    if not gene_sets:
+        return
+    tested = {normalize_gene_id(g) for g in background}
+    if tested & members:
+        return
+    example_set = sorted(members)[:3]
+    example_tested = sorted(tested)[:3]
+    warnings.warn(
+        f"no gene set shares an identifier with the {len(tested)} genes that were "
+        "tested, so nothing could be tested and an empty result is not a finding.\n"
+        f"  the gene sets name genes like: {example_set}\n"
+        f"  the annotation names them:     {example_tested}",
+        stacklevel=3,
+    )
+
+
 def enrich_differential(
     diff_table: pd.DataFrame,
     gene_sets: Mapping[str, Sequence[str]],
@@ -304,6 +329,7 @@ def enrich_differential(
     )
     background = diff_table[chosen].dropna().unique().tolist()
     hits = significant(diff_table, q=q, min_delta=min_delta)[chosen].dropna().unique().tolist()
+    _warn_if_nothing_can_be_tested(background, members, gene_sets)
     if weight_by_units and "weights" not in kwargs:
         kwargs["weights"] = diff_table[chosen].dropna().value_counts().to_dict()
     return over_representation(hits, background, gene_sets, **kwargs)

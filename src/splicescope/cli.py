@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import warnings
 from pathlib import Path
 
 from . import __version__
@@ -198,22 +199,17 @@ def _cmd_run(args: argparse.Namespace) -> int:
         from . import enrich as _enrich
 
         gene_sets = _io.read_gmt(args.gene_sets)
-        enr = _enrich.enrich_differential(diff, gene_sets)
+        # `enrich_differential` says when no gene set names a gene that was tested; it
+        # is caught here only so the message looks like the CLI's other warnings rather
+        # than like a Python one, and is not said twice.
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            enr = _enrich.enrich_differential(diff, gene_sets)
+        for entry in caught:
+            print(f"warning: {entry.message}", file=sys.stderr)
         enr.to_csv(outdir / "enrichment.tsv", sep="\t", index=False)
         n_sig = int((enr["qvalue"] <= 0.05).sum()) if not enr.empty else 0
         print(f"[run] enrichment: {len(gene_sets)} sets, {len(enr)} tested, {n_sig} sig (q<=0.05)")
-        if enr.empty and not diff.empty:
-            example_set = next(iter(gene_sets.values()), [""])[:1]
-            example_gene = diff["gene_id"].dropna().head(1).tolist()
-            print(
-                "warning: no gene set shares an identifier with the tested genes, so "
-                "nothing could be tested.\n"
-                f"  gene sets name genes like: {example_set}\n"
-                f"  the annotation names them: {example_gene}\n"
-                "  use a GMT keyed by the same kind of identifier as your GTF "
-                "(symbols work if the GTF carries gene_name).",
-                file=sys.stderr,
-            )
         if not enr.empty:
             fig, ax = _plot.plt.subplots(figsize=(6, 3.6))
             _plot.plot_enrichment(enr, ax=ax)

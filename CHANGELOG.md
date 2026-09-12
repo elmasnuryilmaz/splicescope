@@ -301,6 +301,14 @@ All notable changes to this project are documented here. The format is based on
   before it failed none.
 
 ### Fixed
+- **Gene sets that name nothing tested say so.** With no identifier in common nothing
+  can be tested, and the empty result reads as "no pathway is enriched" — a conclusion,
+  where the truth is that the question was never asked. Gene-set files are keyed by
+  symbols about as often as by accessions, and a GMT for the wrong organism looks exactly
+  like one for the right one. The CLI has warned about this since 0.8.1;
+  `enrich_differential` returned the empty frame in silence, so everyone using the
+  library got it. The warning is now in the library, with both spellings in it, and the
+  CLI relays that one message instead of composing a second.
 - **A genome from another assembly is refused rather than read off the end of a contig.**
   `GenomeFasta.fetch` clamps to the contig's length and returns a truncated string, not
   an error, so the wrong genome does not fail — it finds no stop codon anywhere and calls

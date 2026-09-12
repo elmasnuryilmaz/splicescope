@@ -498,3 +498,54 @@ def test_the_weighted_test_reduces_to_the_plain_one_when_no_gene_is_favoured():
     for term in plain.index:
         assert flat.loc[term, "bias_odds"] == pytest.approx(1.0), term
         assert flat.loc[term, "pvalue"] == pytest.approx(plain.loc[term, "pvalue"], rel=1e-6), term
+
+
+def test_gene_sets_that_name_no_tested_gene_say_so_rather_than_finding_nothing():
+    """An empty enrichment reads as "no pathway is enriched" — a conclusion. When no
+    identifier is shared the truth is that the question was never asked, and gene-set
+    files are keyed by symbols about as often as by accessions, so the mistake is easy.
+    The CLI has warned since 0.8.1; the library returned an empty frame in silence."""
+    import warnings
+
+    diff = pd.DataFrame(
+        {
+            "chrom": ["chr1"] * 6, "start": range(6), "end": range(100, 106),
+            "strand": ["+"] * 6,
+            "gene_id": [f"ENSG{i:011d}" for i in range(6)],
+            "gene_name": [f"GENE{i}" for i in range(6)],
+            "qvalue": [1e-8] * 3 + [0.9] * 3,
+            "delta_psi": [0.4] * 3 + [0.01] * 3,
+            "abs_delta_psi": [0.4] * 3 + [0.01] * 3,
+        }
+    )
+
+    with pytest.warns(UserWarning, match="no gene set shares an identifier"):
+        empty = enrich_differential(diff, {"S": ["YFL001C", "YFL002C", "YFL003C"]})
+    assert empty.empty
+
+    # a collection that does name tested genes says nothing, and neither does no
+    # collection at all — there is no mistake to report in either
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert len(enrich_differential(diff, {"S": ["GENE0", "GENE1", "GENE2", "GENE4"]})) == 1
+        assert enrich_differential(diff, {}).empty
+
+
+def test_the_warning_names_both_spellings_so_the_mismatch_is_visible():
+    import warnings
+
+    diff = pd.DataFrame(
+        {
+            "chrom": ["chr1"] * 4, "start": range(4), "end": range(100, 104),
+            "strand": ["+"] * 4,
+            "gene_id": [f"ENSG{i:011d}" for i in range(4)],
+            "qvalue": [1e-8] * 2 + [0.9] * 2, "delta_psi": [0.4] * 2 + [0.01] * 2,
+            "abs_delta_psi": [0.4] * 2 + [0.01] * 2,
+        }
+    )
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        enrich_differential(diff, {"S": ["TARDBP", "STMN2", "UNC13A"]})
+    message = str(caught[0].message)
+    assert "STMN2" in message or "TARDBP" in message, "what the gene sets look like"
+    assert "ENSG" in message, "what the annotation looks like"

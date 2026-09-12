@@ -228,3 +228,89 @@ def test_the_beta_binomial_cannot_be_asked_for_without_counts():
     psi = _psi_without_counts()
     with pytest.raises(ValueError, match="count"):
         differential_splicing(psi, _groups(psi), test="betabinom")
+
+
+def _counts_table(n_units=60, delta=0.15, seed=0):
+    """A Ψ table with the counts it was computed from, so the beta-binomial can run."""
+    rng = np.random.default_rng(seed)
+    samples = ["C1", "C2", "C3", "K1", "K2", "K3"]
+    rows = []
+    for unit in range(n_units):
+        for sample in samples:
+            psi = 0.35 + (delta if sample.startswith("K") else 0.0) + rng.normal(0, 0.04)
+            total = int(rng.integers(60, 120))
+            rows.append(
+                {
+                    "chrom": "chr1", "start": 1000 + 10 * unit, "end": 1200 + 10 * unit,
+                    "strand": "+", "gene_id": f"G{unit // 10}", "sample": sample,
+                    "psi_donor": psi, "donor_total": float(total),
+                    "count": round(psi * total),
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def test_the_per_unit_floor_option_reaches_the_test_and_only_widens_the_null():
+    """METHODS §5.4 is an argument for a public option, and the option's own branch in
+    `differential_splicing` had no test — only the estimator underneath it. Taking the
+    smaller of the shared and per-unit precisions can only widen the null, so every
+    p-value must move up or stay, and the reported precision must not exceed the shared
+    one for any unit."""
+    from splicescope.diff import differential_splicing
+
+    psi = _counts_table()
+    groups = _groups(psi)
+    shared = differential_splicing(psi, groups, dispersion="shared").set_index("start")
+    floored = differential_splicing(psi, groups, dispersion="per_unit_floor").set_index("start")
+
+    assert len(floored) == len(shared) == 60
+    assert shared["precision"].nunique() == 1, "one precision for every unit"
+    assert floored["precision"].nunique() > 1, "per unit, so they differ"
+    assert (floored["precision"] <= shared["precision"].iloc[0] + 1e-9).all()
+
+    common = shared.index
+    assert (floored.loc[common, "pvalue"] >= shared.loc[common, "pvalue"] - 1e-9).all(), (
+        "a wider null cannot make any unit more significant"
+    )
+    # ΔΨ is a difference of *fitted* group means, and fit_mu depends on the precision it
+    # is given, so shrinking the precision moves the effect size a little. It must not
+    # move much, and it must never change direction.
+    moved = (floored.loc[common, "delta_psi"] - shared.loc[common, "delta_psi"]).abs()
+    assert moved.max() < 0.01, f"ΔΨ moved by {moved.max():.4f}"
+    assert (
+        np.sign(floored.loc[common, "delta_psi"]) == np.sign(shared.loc[common, "delta_psi"])
+    ).all()
+
+
+def test_an_unknown_dispersion_is_refused():
+    from splicescope.diff import differential_splicing
+
+    psi = _counts_table(n_units=4)
+    with pytest.raises(ValueError, match="unknown dispersion"):
+        differential_splicing(psi, _groups(psi), dispersion="empirical_bayes")
+
+
+def test_a_unit_without_enough_replicates_is_skipped_by_the_rank_test():
+    """`min_samples` is per group, and a unit that cannot meet it in both is dropped
+    rather than tested on one side."""
+    from splicescope.diff import differential_splicing
+
+    psi = _psi_without_counts(n_units=3)
+    # leave the second unit with a single knockdown sample
+    thin = psi[~((psi["start"] == 1010) & psi["sample"].isin(["K2", "K3"]))]
+    out = differential_splicing(thin, _groups(psi), test="ranksum", min_samples=2)
+
+    assert set(out["start"]) == {1000, 1020}, "the thinned unit is absent, not half-tested"
+    assert out["n_b"].eq(3).all()
+
+
+def test_the_rank_test_carries_the_annotation_columns_through():
+    """`gene_id` and `sclass` are what make a result table usable, and the rank test
+    copies them from the unit's first row."""
+    from splicescope.diff import differential_splicing
+
+    psi = _counts_table(n_units=12).drop(columns=["count", "donor_total"])
+    psi = psi.assign(sclass="novel_donor")
+    out = differential_splicing(psi, _groups(psi), test="ranksum")
+    assert {"gene_id", "sclass"} <= set(out.columns)
+    assert out["gene_id"].nunique() == 2 and out["sclass"].eq("novel_donor").all()

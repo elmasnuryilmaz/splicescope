@@ -160,9 +160,9 @@ rather than only asserted.
 ## Testing
 
 ```bash
-pytest            # 242 tests: unit + property + end-to-end CLI runs
+pytest            # 251 tests: unit + property + end-to-end CLI runs
 ruff check .      # lint
-pytest --cov=splicescope   # 96 % of statements; CI fails below 90 %
+pytest --cov=splicescope   # 97 % of statements; CI fails below 90 %
 ```
 
 CI runs the suite and the linter on every push against Python 3.10-3.13, plus the

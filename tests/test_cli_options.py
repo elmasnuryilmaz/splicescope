@@ -139,3 +139,98 @@ def test_gene_sets_naming_other_identifiers_say_so_instead_of_reporting_nothing(
     assert "no gene set shares an identifier" in captured.err
     assert "gene sets name genes like" in captured.err
     assert "0 tested" in captured.out
+
+
+def test_the_simulate_subcommand_writes_a_dataset_the_run_command_accepts(tmp_path, capsys):
+    """The README's very first command, and it had no test — the suite built its
+    datasets by calling the library directly. CI's smoke test runs it, so a break would
+    have shown up there, but nothing pinned what it writes."""
+    data = tmp_path / "demo"
+    assert main(["simulate", "--outdir", str(data), "--genes", "6", "--seed", "1"]) == 0
+
+    for name in ("annotation.gtf", "groups.tsv", "genome.fa", "genome.fa.fai", "truth.tsv"):
+        assert (data / name).exists(), name
+    assert len(list((data / "sj").glob("*.SJ.out.tab"))) == 8, "4 replicates per group"
+    printed = capsys.readouterr().out
+    assert "unique junctions" in printed and "truth.tsv" in printed
+
+    # and what it wrote is what `run` consumes, genome and all
+    out = tmp_path / "results"
+    assert _run(data, out, "--genome", str(data / "genome.fa")) == 0
+    assert (out / "differential_splicing.tsv").exists()
+    assert (out / "consequence.tsv").exists()
+
+
+def test_an_empty_sj_directory_is_an_error_not_an_empty_result(dataset, tmp_path, capsys):
+    """Pointing --sj-dir at the wrong place is an easy mistake, and a run that reports
+    nothing is the one outcome this tool must never produce quietly."""
+    _, data, _ = dataset
+    empty = tmp_path / "nothing"
+    empty.mkdir()
+    rc = main(
+        [
+            "run",
+            "--sj-dir", str(empty),
+            "--gtf", str(data / "annotation.gtf"),
+            "--groups", str(data / "groups.tsv"),
+            "--outdir", str(tmp_path / "out"),
+        ]
+    )
+    assert rc == 2
+    assert "no *.tab files" in capsys.readouterr().err
+
+
+def test_a_sample_listed_in_groups_with_no_file_warns_and_the_run_continues(
+    dataset, tmp_path, capsys
+):
+    """A dropped sample is a real experiment, not a typo, so this must not be fatal —
+    but it must not be silent either. Only the total-mismatch case was tested."""
+    _, data, _ = dataset
+    groups = pd.read_csv(data / "groups.tsv", sep="\t")
+    extra = pd.concat(
+        [groups, pd.DataFrame([{"sample": "B99", "condition": groups["condition"].iloc[-1]}])],
+        ignore_index=True,
+    )
+    path = tmp_path / "groups_with_a_ghost.tsv"
+    extra.to_csv(path, sep="\t", index=False)
+
+    rc = main(
+        [
+            "run",
+            "--sj-dir", str(data / "sj"),
+            "--gtf", str(data / "annotation.gtf"),
+            "--groups", str(path),
+            "--outdir", str(tmp_path / "ghost"),
+        ]
+    )
+    assert rc == 0
+    error = capsys.readouterr().err
+    assert "B99" in error and "no *.tab file" in error
+
+
+def test_the_consequence_subcommand_names_the_columns_it_needs(dataset, tmp_path, capsys):
+    """Run on its own, it takes a table of events from anywhere — including rMATS or a
+    hand-made one — so the column check is the first thing a new user meets."""
+    _, data, _ = dataset
+    events = tmp_path / "events.tsv"
+    pd.DataFrame({"chrom": ["chr1"], "gene_id": ["g00"]}).to_csv(events, sep="\t", index=False)
+    def run_consequence(*extra):
+        return main(
+            [
+                "consequence",
+                "--events", str(events),
+                "--gtf", str(data / "annotation.gtf"),
+                "--genome", str(data / "genome.fa"),
+                "--out", str(tmp_path / "cons.tsv"),
+                *extra,
+            ]
+        )
+
+    # with no coordinate columns at all it cannot even tell which kind of table this is
+    assert run_consequence() == 2
+    assert "pass --mode explicitly" in capsys.readouterr().err
+
+    # told which kind, it names the columns that kind needs
+    assert run_consequence("--mode", "junction") == 2
+    error = capsys.readouterr().err
+    assert "missing columns" in error and "strand" in error

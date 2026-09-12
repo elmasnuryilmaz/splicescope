@@ -234,3 +234,16 @@ def test_a_zero_is_filled_from_whichever_site_was_covered():
     row = psi[(psi["start"] == 100) & (psi["sample"] == "K1")]
     assert row["psi_acceptor"].iloc[0] == 0.0
     assert row["acceptor_total"].iloc[0] == 40.0
+
+
+def test_a_psi_matrix_instead_of_a_long_table_says_so():
+    """`psi_matrix` returns junctions by samples, which is the shape a person reaches
+    for — and with no `sample` column nothing can be assigned to a condition."""
+    import pytest
+
+    from splicescope.quantify import psi_matrix
+
+    psi = _small_psi()
+    wide = psi_matrix(psi)
+    with pytest.raises(ValueError, match="no 'sample' column"):
+        differential_splicing(wide.reset_index(), GROUPS)

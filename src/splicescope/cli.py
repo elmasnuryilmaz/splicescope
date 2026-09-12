@@ -99,6 +99,11 @@ def _cmd_run(args: argparse.Namespace) -> int:
     }
     if _check_samples(sj_paths, groups) != 0:
         return 2
+    # `_check_samples` has already said which samples do not line up, so narrow the
+    # mapping to the ones that were actually read. Handing a sample with no data down to
+    # `differential_splicing` would have it warn about the same thing again, once per
+    # call, and the specific message is the one above.
+    groups = {sample: condition for sample, condition in groups.items() if sample in sj_paths}
 
     observed = _io.read_many_star_sj(sj_paths)
     known = _io.read_gtf_junctions(args.gtf)

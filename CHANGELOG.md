@@ -67,10 +67,14 @@ All notable changes to this project are documented here. The format is based on
 - **The Markdown model card carries the hyper-parameters too.** The JSON one gained them
   from the fitted estimator this release; the human-readable card, which is the one a
   reviewer reads, still omitted them.
-- **Coverage is measured, with a floor in CI.** 96 % of statements, and the `test` job
-  fails below 90 %. Three of the blocks that were uncovered turned out to be whole
+- **Coverage is measured, with a floor in CI.** 97 % of statements, and the `test` job
+  fails below 90 %. Five of the blocks that were uncovered turned out to be whole
   features with no test: pathway enrichment behind `--gene-sets`, the classifier branch
-  above, and the entire rank-sum test.
+  above, the entire rank-sum test, the `simulate` subcommand — the README's first
+  command, exercised by CI's smoke test but pinned by nothing — and
+  `dispersion="per_unit_floor"`, which is the public option METHODS §5.4 exists to
+  justify. `cli.py` went from 80 % to 98 % and `diff.py` from 78 % to 95 %. What is left
+  uncovered is scattered defensive lines, not features.
 
 - **`validation/dispersion_trade.py`, and the §5.4 tables checked against it.** METHODS
   §5.4 is the argument for leaving `dispersion="shared"` as the default: it costs roughly
@@ -236,6 +240,10 @@ All notable changes to this project are documented here. The format is based on
   before it failed none.
 
 ### Fixed
+- **A sample listed in `--groups` with no file warned three times.** The CLI names it,
+  and then hands the mapping to `differential_splicing`, which warns about the same
+  sample again on each of its two calls. The CLI now narrows the mapping to the samples
+  it actually read, after saying which it dropped, so one specific message replaces three.
 - **METHODS §5.1 overstated the rank test's floor.** It says a two-sided Mann-Whitney on
   3 against 3 cannot return a p-value below `2/C(6,3)` = 0.1. That is the *exact* test's
   floor, and `scipy.stats.mannwhitneyu` computes the exact p-value only for a small,

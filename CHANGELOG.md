@@ -64,6 +64,15 @@ All notable changes to this project are documented here. The format is based on
   the three-a-side design METHODS §5.1 is about, it is the difference between **32 of 44
   events called and none at all**.
 
+- **`docs/nmd_rule.gif`: the 50-nucleotide rule, animated.** A premature stop codon
+  walks towards the last exon-exon junction and the prediction flips exactly once, where
+  the rule says it does. That threshold is the whole of what this toolkit predicts about
+  a cryptic exon, and it is one number — worth a picture more than anything else on the
+  page. Every verdict in it comes from `_nmd_from_downstream`, the function the pipeline
+  uses, rather than from a drawing of the rule, and a test walks the same positions and
+  requires the call to change once and to straddle 50. The animation cannot drift from
+  the code.
+
 - **The README's Python examples are run by the suite, and the diagram shows the
   consequence step.** A snippet that has stopped working is the first thing a reader
   meets, and nothing touched them. Both had something wrong: one assigned `evaluate`'s

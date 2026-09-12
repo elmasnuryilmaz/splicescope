@@ -177,7 +177,7 @@ rather than only asserted.
 ## Testing
 
 ```bash
-pytest            # 299 tests: unit + property-based + end-to-end CLI runs
+pytest            # 300 tests: unit + property-based + end-to-end CLI runs
 ruff check .      # lint
 pytest --cov=splicescope   # 97 % of statements; CI fails below 90 %
 ```
@@ -239,6 +239,12 @@ Finding a cryptic exon says nothing about whether it matters. The same event can
 tolerated, shift the reading frame, or introduce a premature termination codon that sends
 the transcript to nonsense-mediated decay — which is how TDP-43 cryptic exons deplete
 proteins such as STMN2 and UNC13A.
+
+<p align="center"><img src="docs/nmd_rule.gif" alt="A premature stop codon moving towards the last exon-exon junction; past 50 nucleotides the transcript is degraded by nonsense-mediated decay, within 50 it escapes and a truncated protein is made" width="560"></p>
+
+*The whole of the prediction is one threshold. Every verdict in that animation comes from
+the function the pipeline uses, not from a drawing of the rule — regenerate it with
+`python docs/make_nmd_rule_gif.py`.*
 
 Passing `--genome` to `run` folds this into the pipeline, writing `consequence.tsv` for
 cassette exons and `junction_consequence.tsv` for splice-site shifts. Candidates produced

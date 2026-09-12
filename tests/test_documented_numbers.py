@@ -24,9 +24,17 @@ _TABLE_ROW = re.compile(
 )
 
 
+def _load_docs(script: str):
+    """Import a `docs/` generator by path, the same way as a validation script."""
+    return _load_from(ROOT / "docs" / f"{script}.py", script)
+
+
 def _load(script: str):
     """Import a `validation/` script by path — they are programs, not a package."""
-    path = ROOT / "validation" / f"{script}.py"
+    return _load_from(ROOT / "validation" / f"{script}.py", script)
+
+
+def _load_from(path, script: str):
     spec = importlib.util.spec_from_file_location(script, path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -133,3 +141,27 @@ def test_the_readme_s_python_examples_run():
                 f"{source}"
             ) from exc
         assert namespace, f"block {index} defined nothing — is it really runnable?"
+
+
+def test_the_nmd_animation_flips_where_the_rule_says_it_does():
+    """The animation on the README is the tool's central claim in one picture, and a
+    picture can say what the code does not. Every frame's verdict comes from
+    `_nmd_from_downstream`, and this checks the sequence of verdicts: the call has to
+    change exactly once, between a distance above 50 and one below it."""
+    from splicescope.consequence import NMD_DISTANCE_RULE
+
+    generator = _load_docs("make_nmd_rule_gif")
+    walk = range(300, generator.FIRST_EXON - 9, 12)
+    verdicts = [generator.verdict(stop) for stop in walk]
+
+    distances = [distance for _, distance, _ in verdicts]
+    calls = [nmd for _, _, nmd in verdicts]
+    assert distances == sorted(distances, reverse=True), "the stop walks towards the junction"
+    assert calls[0] is True and calls[-1] is False, "and the fate changes along the way"
+
+    flips = [i for i in range(1, len(calls)) if calls[i] != calls[i - 1]]
+    assert len(flips) == 1, f"the call must change exactly once, changed at {flips}"
+    before, after = distances[flips[0] - 1], distances[flips[0]]
+    assert before > NMD_DISTANCE_RULE >= after, (
+        f"the flip straddles {NMD_DISTANCE_RULE}: {before} nt then {after} nt"
+    )

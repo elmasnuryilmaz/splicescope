@@ -124,13 +124,13 @@ units at `s = 200` and half at `s = 5`:
 
 | units | true `s` | shared estimate | false positives at nominal 0.05 |
 |---|---:|---:|---:|
-| tightly dispersed | 200 | 10.7 | 0.000 |
-| loosely dispersed | 5 | 10.7 | **0.173** |
-| all | — | 10.7 | 0.087 |
+| tightly dispersed | 200 | 10.5 | 0.000 |
+| loosely dispersed | 5 | 10.5 | **0.155** |
+| all | — | 10.5 | 0.077 |
 
 The shared value lands between the extremes, so the test is anti-conservative for
 everything noisier than it and very conservative for everything tighter. Only the pooled
-0.087 is visible in a normal run.
+0.077 is visible in a normal run.
 
 `differential_splicing(dispersion="per_unit_floor")` also estimates each unit's own
 precision and uses the smaller of the two. A unit's own estimate from a handful of
@@ -139,8 +139,13 @@ null, so it can only remove false positives:
 
 | | heterogeneous null, loose units | heterogeneous null, all | homogeneous null | power (Ψ 0.30 vs 0.45) |
 |---|---:|---:|---:|---:|
-| `shared` (default) | 0.173 | 0.087 | 0.051 | 0.52 |
-| `per_unit_floor` | 0.090 | 0.045 | 0.037 | 0.44 |
+| `shared` (default) | 0.155 | 0.077 | 0.048 | 0.520 |
+| `per_unit_floor` | 0.079 | 0.039 | 0.036 | 0.442 |
+
+1,000 units per stratum, 3 against 3 at 60 reads, averaged over 5 independent
+simulations. Reproduce with
+[`validation/dispersion_trade.py`](../validation/dispersion_trade.py); a test compares
+every figure above against it.
 
 That is a real trade — roughly a sixth of the power — so the default is unchanged and the
 option is there for data where dispersion is expected to vary widely. A per-unit estimate

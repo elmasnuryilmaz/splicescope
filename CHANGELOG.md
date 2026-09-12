@@ -55,6 +55,16 @@ All notable changes to this project are documented here. The format is based on
   what the previous code produced.
 
 ### Added
+- **`validation/dispersion_trade.py`, and the §5.4 tables checked against it.** METHODS
+  §5.4 is the argument for leaving `dispersion="shared"` as the default: it costs roughly
+  a sixth of the power to halve the false-positive rate on loosely dispersed units. Those
+  figures had no reproduction path at all — no script, and no pointer to one, unlike §7b
+  — and the suite's own tests only check the direction, with bounds loose enough for any
+  of them to drift. There is now a script that states every parameter and averages over
+  five independent simulations, and a test that compares every cell of both tables
+  against it. The test also caught that the two tables state some of the same figures,
+  and now requires them to agree.
+
 - **The ORA calibration table in METHODS is checked against the script that produces
   it.** `validation/ora_bias_calibration.py` gained a `measure()` function, and a test
   runs it and compares every figure in the §7b table at the precision the table quotes.
@@ -209,6 +219,12 @@ All notable changes to this project are documented here. The format is based on
   before it failed none.
 
 ### Fixed
+- **The §5.4 dispersion figures did not reproduce.** Reconstructing the simulation from
+  the parameters the section states gives 0.155 where the table said 0.173, 0.077 where
+  it said 0.087, and a shared precision estimate of 10.5 rather than 10.7 — the power
+  figures, 0.520 and 0.442, were right. The conclusion is unchanged, so the tables now
+  carry what the script produces, and `differential_splicing`'s own docstring is updated
+  with them.
 - **METHODS §7b quoted a false-positive rate the code no longer produces.** The weighted
   ORA's rate on biologically null gene sets moved from 1.9 % to 2.1 % when the propensity
   estimate gained its Jeffreys smoothing in 0.9.1 — a change the release notes describe —

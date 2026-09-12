@@ -285,9 +285,10 @@ def differential_splicing(
         takes the smaller of the two, which can only widen the null. Use it when
         dispersion is likely heterogeneous — the shared value is anti-conservative
         for anything noisier than itself. It costs power: on simulated homogeneous
-        data (Ψ 0.30 vs 0.45, 3 vs 3, 60 reads) power falls from 0.52 to 0.44, while
-        on heterogeneous null data the false-positive rate of the loosely dispersed
-        units falls from 0.173 to 0.090 and the overall rate from 0.087 to 0.045.
+        data (Ψ 0.30 vs 0.45, 3 vs 3, 60 reads) power falls from 0.520 to 0.442,
+        while on heterogeneous null data the false-positive rate of the loosely
+        dispersed units falls from 0.155 to 0.079 and the overall rate from 0.077
+        to 0.039. Reproduce with ``validation/dispersion_trade.py``.
 
     Returns one row per unit, sorted by q-value.
     """

@@ -61,3 +61,53 @@ def test_the_ora_calibration_table_matches_the_script_that_produces_it():
             assert _at_documented_precision(computed, documented) == float(documented), (
                 f"{name} at {where}: METHODS says {documented}, the script gives {computed:.4f}"
             )
+
+
+#: The two tables of METHODS §5.4, keyed by the name `dispersion_trade.measure` uses.
+_DISPERSION_ROWS = (
+    (r"\| tightly dispersed \| 200 \| ([\d.]+) \| ([\d.]+) \|",
+     ("heterogeneous shared estimate", "heterogeneous tight, shared")),
+    (r"\| loosely dispersed \| 5 \| [\d.]+ \| \*\*([\d.]+)\*\* \|",
+     ("heterogeneous loose, shared",)),
+    (r"\| all \| — \| [\d.]+ \| ([\d.]+) \|",
+     ("heterogeneous all, shared",)),
+    (r"\| `shared` \(default\) \| ([\d.]+) \| ([\d.]+) \| ([\d.]+) \| ([\d.]+) \|",
+     ("heterogeneous loose, shared", "heterogeneous all, shared",
+      "homogeneous, shared", "power, shared")),
+    (r"\| `per_unit_floor` \| ([\d.]+) \| ([\d.]+) \| ([\d.]+) \| ([\d.]+) \|",
+     ("heterogeneous loose, floor", "heterogeneous all, floor",
+      "homogeneous, floor", "power, floor")),
+)
+
+
+def test_the_dispersion_trade_tables_match_the_script_that_produces_them():
+    """METHODS §5.4 is the argument for leaving `dispersion="shared"` as the default:
+    it costs roughly a sixth of the power to halve the false-positive rate on loosely
+    dispersed units. Those are the numbers a reader would weigh, and the suite's own
+    tests only check the direction — that the loose half over-calls and the floor
+    lowers it — with bounds loose enough for any of the figures to drift.
+
+    The tolerance is absolute 0.005. The simulations are seeded, so this reproduces
+    exactly on one machine; the slack is for NumPy's right to change a generator's
+    stream between versions, and is still far below the drift that would matter (the
+    figures this replaced were off by 0.02).
+    """
+    methods = (ROOT / "docs" / "METHODS.md").read_text()
+    documented: dict[str, str] = {}
+    for pattern, names in _DISPERSION_ROWS:
+        found = re.search(pattern, methods)
+        assert found, f"could not parse §5.4 with {pattern}"
+        for name, value in zip(names, found.groups(), strict=True):
+            if name in documented:
+                assert documented[name] == value, (
+                    f"§5.4 states {name} twice and disagrees: {documented[name]} vs {value}"
+                )
+            documented[name] = value
+
+    measured = _load("dispersion_trade").measure()
+    assert set(documented) <= set(measured), sorted(set(documented) - set(measured))
+    for name, value in documented.items():
+        tolerance = 0.05 if "estimate" in name else 0.005
+        assert abs(measured[name] - float(value)) <= tolerance, (
+            f"{name}: METHODS says {value}, the script gives {measured[name]:.4f}"
+        )

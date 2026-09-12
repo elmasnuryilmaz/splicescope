@@ -280,3 +280,80 @@ def test_every_public_function_is_annotated():
             if node.returns is None and not any(a.annotation for a in arguments):
                 unannotated.append(f"{path.name}:{node.name}")
     assert not unannotated, f"public functions with no annotations at all: {unannotated}"
+
+
+def _gtf_line(feature, start, end, tx="T1", gene="G1", chrom="chr1", extra=""):
+    attrs = f'gene_id "{gene}"; transcript_id "{tx}"; gene_name "{gene}";{extra}'
+    return f"{chrom}\tsrc\t{feature}\t{start}\t{end}\t.\t+\t.\t{attrs}"
+
+
+def test_a_real_gtf_s_awkward_lines_are_skipped_rather_than_parsed(tmp_path):
+    """Everything here occurs in annotations people actually download. GENCODE files
+    open with several `##` lines; a transcript with one exon has no intron to
+    contribute; some annotations carry exons that overlap within one transcript, which
+    would otherwise produce an intron running backwards."""
+    path = tmp_path / "awkward.gtf"
+    path.write_text(
+        "\n".join(
+            [
+                "##description: evidence-based annotation",
+                "#!genome-build GRCh38",
+                "",
+                _gtf_line("gene", 100, 900),          # not an exon
+                _gtf_line("transcript", 100, 900),    # not an exon either
+                _gtf_line("exon", 100, 200),          # T1 exon 1
+                _gtf_line("exon", 401, 500),          # T1 exon 2  -> intron 201-400
+                # a transcript whose exons overlap: the "intron" would run backwards
+                _gtf_line("exon", 100, 300, tx="T2", gene="G2"),
+                _gtf_line("exon", 250, 400, tx="T2", gene="G2"),
+                # a single-exon transcript contributes no intron at all
+                _gtf_line("exon", 600, 700, tx="T3", gene="G3"),
+                "chr1\tsrc\texon\t800\t900\t.\t+\t.\tgene_id \"G4\";",  # no transcript_id
+                "chr1\tsrc\texon\t950",                                 # truncated line
+            ]
+        )
+        + "\n"
+    )
+    known = read_gtf_junctions(path)
+
+    assert len(known) == 1, f"only T1 has an intron, got {known.to_dict('records')}"
+    row = known.iloc[0]
+    assert (row["chrom"], row["start"], row["end"], row["strand"]) == ("chr1", 201, 400, "+")
+    assert row["gene_id"] == "G1"
+
+
+def test_a_gtf_of_single_exon_transcripts_yields_no_junctions(tmp_path):
+    """Which is not an error here, but it is one downstream: with nothing to match
+    against, every observed junction would be called cryptic. `annotate_junctions` is
+    what refuses it."""
+    import pandas as pd
+    import pytest
+
+    from splicescope.annotate import annotate_junctions
+
+    path = tmp_path / "single.gtf"
+    path.write_text(
+        _gtf_line("exon", 100, 200, tx="T1") + "\n" + _gtf_line("exon", 600, 700, tx="T2") + "\n"
+    )
+    known = read_gtf_junctions(path)
+    assert known.empty
+    assert list(known.columns) == ["chrom", "start", "end", "strand", "gene_id", "gene_name"]
+
+    observed = pd.DataFrame(
+        [dict(chrom="chr1", start=201, end=400, strand="+", sample="s1", count=30)]
+    )
+    with pytest.raises(ValueError, match="contains no junctions"):
+        annotate_junctions(observed, known)
+
+
+def test_no_sj_files_gives_an_empty_table_with_the_right_columns(tmp_path):
+    """`read_many_star_sj({})` is reachable from the library even though the CLI
+    refuses an empty directory first, and an empty frame with no columns is the shape
+    that breaks every caller downstream."""
+    from splicescope.io import read_many_star_sj
+
+    out = read_many_star_sj({})
+    assert out.empty
+    assert list(out.columns) == [
+        "chrom", "start", "end", "strand", "motif", "annotated_star", "count", "sample",
+    ]

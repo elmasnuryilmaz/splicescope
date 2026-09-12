@@ -25,8 +25,13 @@ _VERSION_SUFFIX = re.compile(r"\.\d+$")
 #: What a de-versioned stem must look like before the suffix is treated as a version:
 #: Ensembl (``ENSG``, ``ENSMUST``, …) or RefSeq-style (``NM_``, ``XP_``, …) accessions.
 _ACCESSION = re.compile(r"^(?:ENS[A-Z]*[EGTP]\d+|[A-Z]{2}_\d+)$", re.IGNORECASE)
-#: Floor for an estimated hit rate, so a bin with no hits still yields finite odds.
-_MIN_PROPENSITY = 1e-6
+#: Pseudo-counts added to each bin's hit rate (a Jeffreys prior). Without them a bin whose
+#: members all are, or all are not, hits gives a rate of exactly 1 or 0, and the odds
+#: ``p/(1-p)`` that :func:`_bias_odds` averages become infinite in one direction. Clipping
+#: to a small epsilon instead is worse than useless: it replaces infinity with an arbitrary
+#: 1e6 that still swamps every other gene in the average.
+_PSEUDO_HITS = 0.5
+_PSEUDO_TOTAL = 1.0
 
 
 def normalize_gene_id(gene: str) -> str:
@@ -102,12 +107,16 @@ def selection_propensity(
     for members in chunks:
         if not members:
             continue
-        rate = sum(1 for g in members if g in hit_set) / len(members)
+        observed = sum(1 for g in members if g in hit_set)
+        # Shrink towards 1/2 by the bin's own size, so a small bin cannot assert certainty.
+        # A 7-gene bin whose members are all hits gives 0.94 (odds 15), not 1 (odds 1e6);
+        # a 200-gene bin with none gives 0.0025. The smaller the bin, the harder it shrinks.
+        rate = (observed + _PSEUDO_HITS) / (len(members) + _PSEUDO_TOTAL)
         for gene in members:
-            propensity[gene] = min(max(rate, _MIN_PROPENSITY), 1.0 - _MIN_PROPENSITY)
+            propensity[gene] = rate
     if not propensity:
-        floor = min(max(baseline, _MIN_PROPENSITY), 1.0 - _MIN_PROPENSITY)
-        return dict.fromkeys(bg, floor)
+        smoothed = (baseline * len(bg) + _PSEUDO_HITS) / (len(bg) + _PSEUDO_TOTAL)
+        return dict.fromkeys(bg, smoothed)
     return propensity
 
 
@@ -115,12 +124,17 @@ def _bias_odds(in_set: set, bg: set, propensity: Mapping[str, float]) -> float |
     """Wallenius odds for a gene set: how much likelier its genes were to be drawn.
 
     Wallenius' ``ω`` is a ratio of sampling *weights*, so the quantity to average is the
-    odds ``p / (1 - p)``, not the probability. ``goseq`` uses the ratio of mean
-    probabilities, which is the same thing only while ``p`` is small; here propensities
-    reach 0.5 and the difference decides whether the correction works. Measured on
-    biologically null gene sets biased toward large genes, at identical power (90 % at a
-    0.10 enrichment, 100 % above it): ratio of probabilities leaves **38–40 %** of them
-    called at p ≤ 0.05, ratio of odds leaves **0 %**.
+    odds ``p / (1 - p)``, not the probability. ``goseq`` averages the probabilities, which
+    is the same thing only while ``p`` is small; here propensities reach 0.5. Measured on
+    biologically null gene sets biased toward large genes, at identical power (80 % at a
+    0.10 enrichment, 100 % above it): averaging probabilities leaves **38–40 %** of them
+    called at p ≤ 0.05, averaging odds leaves **0 %**.
+
+    The odds diverge as ``p`` approaches 1, which is why :func:`selection_propensity`
+    smooths its rates rather than clipping them. A bin whose members all happened to be
+    hits would otherwise contribute an arbitrary 1e6 and decide the mean by itself — and
+    since the same genes sit in the denominator for every other set, one of them rewrote
+    the whole table.
     """
     outside = bg - in_set
     if not in_set or not outside:

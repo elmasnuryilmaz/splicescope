@@ -291,7 +291,7 @@ reported as `bias_odds`; at `ω = 1` the distribution is exactly the hypergeomet
 
 **One deliberate departure from `goseq`.** It averages the probabilities rather than the
 odds. The two agree while `p` is small, but a propensity here reaches 0.5 and the
-difference decides whether the correction works: at *identical* power — 90 % detection of
+difference decides whether the correction works: at *identical* power — 80 % detection of
 a set enriched by 0.10, 100 % above that — averaging probabilities still leaves 38–40 % of
 the biologically null sets called at p ≤ 0.05, and averaging odds leaves 0 %. Wallenius'
 `ω` is a ratio of sampling weights, so the odds are the quantity it actually asks for.

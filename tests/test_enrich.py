@@ -332,3 +332,59 @@ def test_weighting_keeps_the_power_to_detect_a_real_enrichment():
     result = over_representation(hits, genes, {"REAL": sorted(true_set)}, weights=weights)
     assert len(result) == 1
     assert result.iloc[0]["pvalue"] < 0.01, "a real enrichment must still be found"
+
+
+def test_a_bin_can_never_assert_certainty():
+    """A bin whose members all are (or all are not) hits gave a rate of exactly 1 or 0.
+    `_bias_odds` averages p/(1-p), so a rate of 1 contributed 1e6 after clipping and
+    decided the mean by itself — in one direction for the set that held the gene, and in
+    the other for every set that did not."""
+    from splicescope.enrich import selection_propensity
+
+    rng = np.random.default_rng(21)
+    genes = [f"G{i:04d}" for i in range(2000)]
+    units = np.maximum(1, rng.lognormal(1.6, 1.0, size=2000).astype(int))
+    hits = [
+        g
+        for g, u in zip(genes, units, strict=True)
+        if rng.random() < 1 - (1 - 0.05) ** u
+    ]
+    weights = dict(zip(genes, units.astype(float), strict=True))
+    propensity = selection_propensity(genes, hits, weights)
+
+    assert 0.0 < min(propensity.values())
+    assert max(propensity.values()) < 1.0
+    # smoothing is by bin size, so even an all-hit bin of 7 cannot exceed 7.5/8
+    assert max(propensity.values()) <= 0.95
+
+
+def test_one_high_opportunity_gene_cannot_destroy_a_real_enrichment():
+    """The user-facing consequence of a saturated bin: adding a single gene — one that
+    made the set *more* enriched — took its p-value from 4e-15 to 0.22."""
+    rng = np.random.default_rng(21)
+    genes = [f"G{i:04d}" for i in range(2000)]
+    units = np.maximum(1, rng.lognormal(1.6, 1.0, size=2000).astype(int))
+    hits = [
+        g
+        for g, u in zip(genes, units, strict=True)
+        if rng.random() < 1 - (1 - 0.05) ** u
+    ]
+    weights = dict(zip(genes, units.astype(float), strict=True))
+    hit_set = set(hits)
+    biggest_hit = max(hit_set, key=lambda g: weights[g])
+
+    members = list(rng.choice(sorted(hit_set - {biggest_hit}), size=60, replace=False))
+    members += list(
+        rng.choice([g for g in genes if g not in hit_set], size=40, replace=False)
+    )
+    with_it = members[:-1] + [biggest_hit]
+
+    before = over_representation(hits, genes, {"S": members}, weights=weights).iloc[0]
+    after = over_representation(hits, genes, {"S": with_it}, weights=weights).iloc[0]
+
+    assert after["overlap"] > before["overlap"], "the swap must add a hit"
+    assert before["pvalue"] < 1e-6
+    # the weighted null may legitimately soften the call, but not annihilate it
+    assert after["pvalue"] < 1e-3, (
+        f"one gene moved p from {before.pvalue:.1e} to {after.pvalue:.1e}"
+    )

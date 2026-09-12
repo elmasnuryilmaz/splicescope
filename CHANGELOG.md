@@ -34,11 +34,24 @@ All notable changes to this project are documented here. The format is based on
   `weight_by_units=False` restores the plain test, which Wallenius equals at odds 1.
   One deliberate departure from `goseq`: it averages probabilities where this averages
   odds. They agree while `p` is small, but a propensity here reaches 0.5, and at identical
-  power (90 % detection of a set enriched by 0.10, 100 % above) averaging probabilities
+  power (80 % detection of a set enriched by 0.10, 100 % above) averaging probabilities
   leaves **38–40 %** of the null sets called at p ≤ 0.05 against **0 %** for odds.
   Wallenius' `ω` is a ratio of sampling weights, which is what the odds are.
 
 ### Fixed
+- **A saturated propensity bin let one gene rewrite the whole enrichment table.** Bins are
+  filled in ascending weight order and the remainder becomes its own bin, which at the top
+  of a heavy-tailed unit-count distribution is a handful of the highest-opportunity genes —
+  exactly the genes that are almost always hits. Its observed rate was then 1.0, clipped to
+  `1 − 1e-6`, and `_bias_odds` averages `p/(1-p)`, so each such gene contributed **1e6** and
+  decided the mean by itself, in the numerator for the set that held it and the denominator
+  for every set that did not. Adding one of those genes to a 100-gene set — which made the
+  set *more* enriched, k 60 → 61 — moved its p-value from **3.9e-15 to 0.22**: a real
+  pathway containing the longest gene in the background was reported as not enriched at
+  all. It occurred in 6 of 40 simulated universes. Rates are now shrunk by bin size
+  (`(hits + ½)/(n + 1)`) instead of clipped, so no bin can assert certainty: an all-hit bin
+  of 7 gives 0.94, not 1. Calibration is unchanged (1.9 % → 2.1 % of null sets at p ≤ 0.05)
+  and the same p-value now moves 6.8e-10 → 1.6e-07 rather than flipping.
 - **`normalize_gene_id` collapsed whole gene families in a model organism.** 0.9.0 began
   stripping a trailing `.<digits>` from every identifier, on the docstring's own premise
   that "gene symbols do not end in `.<digits>`". *C. elegans* sequence names — the standard

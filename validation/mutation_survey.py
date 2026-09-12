@@ -28,6 +28,13 @@ Three mutants survive and are expected to: they are equivalent, not uncaught.
 
     python validation/mutation_survey.py                 # every mutation
     python validation/mutation_survey.py --module enrich  # one module's
+
+**Do not edit the repository while this runs.** It writes a mutation into a source file,
+runs the suite, and restores the file — so anything that reads `src/` or `tests/` at the
+same time sees a deliberately broken tree, and anything that *writes* there either loses
+its change to the restore or has it committed as part of a mutation. Both have happened:
+a `git add -A` during a run put the "coding length off by one" mutation into a commit,
+where the suite caught it on the next run.
 """
 
 from __future__ import annotations

@@ -9,6 +9,7 @@ import matplotlib
 matplotlib.use("Agg")  # headless-safe for CI and servers
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 
 _ACCENT = "#ff3d81"
 _ACCENT2 = "#8b5cf6"
@@ -23,7 +24,7 @@ def _style(ax):
     ax.grid(axis="y", alpha=0.15)
 
 
-def plot_annotation_summary(summary, ax=None):
+def plot_annotation_summary(summary: pd.DataFrame, ax=None):
     """Bar chart of unique junctions per class."""
     if ax is None:
         _, ax = plt.subplots(figsize=(5, 3.2))
@@ -56,7 +57,7 @@ def plot_volcano(diff, q: float = 0.05, min_delta: float = 0.1, ax=None):
     return ax
 
 
-def plot_importance(importances, ax=None):
+def plot_importance(importances: pd.DataFrame, ax=None):
     """Horizontal bar of permutation importances."""
     if ax is None:
         _, ax = plt.subplots(figsize=(5, 3.4))
@@ -72,7 +73,7 @@ def plot_importance(importances, ax=None):
 _EVENT_COLORS = {"SE": _ACCENT, "MXE": "#ffcb47", "A5SS": _ACCENT2, "A3SS": _CYAN}
 
 
-def plot_event_summary(events, ax=None):
+def plot_event_summary(events: pd.DataFrame, ax=None):
     """Bar chart of detected events per type (SE / MXE / A5SS / A3SS)."""
     if ax is None:
         _, ax = plt.subplots(figsize=(5, 3.2))
@@ -129,7 +130,7 @@ _CONSEQUENCE_COLORS = {
 }
 
 
-def plot_consequence_summary(consequence, ax=None):
+def plot_consequence_summary(consequence: pd.DataFrame, ax=None):
     """Bar chart of predicted protein consequences, most disruptive class first.
 
     Only classes actually present are drawn, so a cassette-exon run and a
@@ -203,7 +204,7 @@ def plot_enrichment(enrich, top: int = 10, ax=None):
     return ax
 
 
-def plot_roc(y_true, scores, ax=None):
+def plot_roc(y_true: np.ndarray, scores: np.ndarray, ax=None):
     """ROC curve from labels and scores."""
     from sklearn.metrics import roc_auc_score, roc_curve
 

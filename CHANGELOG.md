@@ -55,6 +55,14 @@ All notable changes to this project are documented here. The format is based on
   what the previous code produced.
 
 ### Added
+- **A `py.typed` marker, so the annotations are usable.** Sixty of the sixty-five
+  public functions carried type hints and none of them was visible to anyone installing
+  this: under PEP 561 a type checker ignores a package's inline annotations unless the
+  package ships that marker. It is now in the wheel — verified by building one — and
+  declared as package data so it stays there. The remaining five functions, all in
+  `plotting`, are annotated too: a partly annotated package is worse than an unannotated
+  one, because the checker trusts what is there and infers `Any` for the rest.
+
 - **The showcase figure shows what the events do to the protein.** Six panels, and two
   of them were the classifier — which METHODS §7.1 is explicit is the weakest part of
   this toolkit, worth an order of magnitude less than the statistic when measured against

@@ -44,7 +44,7 @@ the outputs are unchanged apart from row order.
 
 ## What it showed
 
-> **Measured with 0.8.1; not yet re-measured under 0.9.0.** Two defects in the
+> **Measured with 0.8.1; not re-measured since.** Two defects in the
 > differential path were fixed after this run (see the CHANGELOG): the `min_reads`
 > coverage filter was inert for the beta-binomial test, and junctions an aligner omits
 > for want of reads were treated as missing data rather than as measured zeros. Both

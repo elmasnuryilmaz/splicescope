@@ -53,6 +53,12 @@ Archive = "https://doi.org/10.5281/zenodo.22287002"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+# PEP 561: without this marker in the wheel, a type checker in someone else's project
+# ignores every annotation in this package. Sixty of its sixty-five public functions
+# carry them.
+[tool.setuptools.package-data]
+splicescope = ["py.typed"]
+
 [tool.setuptools.dynamic]
 version = { attr = "splicescope.__version__" }
 

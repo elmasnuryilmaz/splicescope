@@ -244,3 +244,39 @@ def test_the_oldest_constraints_match_the_declared_floors():
         assert declared[name].contains(version), (
             f"{name}=={version} does not satisfy the declared {name}{declared[name]}"
         )
+
+
+def test_the_package_tells_type_checkers_its_annotations_are_real():
+    """PEP 561: without a `py.typed` marker shipped in the wheel, a type checker in
+    someone else's project ignores every annotation in this package. Sixty of the
+    sixty-five public functions carried them and none of it was visible."""
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # pragma: no cover - only on Python 3.10
+        import tomli as tomllib
+
+    marker = ROOT / "src" / "splicescope" / "py.typed"
+    assert marker.exists(), "the marker itself"
+
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    package_data = pyproject["tool"]["setuptools"].get("package-data", {})
+    assert "py.typed" in package_data.get("splicescope", []), (
+        "the marker exists but is not declared as package data, so it never reaches "
+        "the wheel and nothing changes for anyone installing this"
+    )
+
+
+def test_every_public_function_is_annotated():
+    """What the marker above promises. A partially annotated package is worse than an
+    unannotated one: the checker trusts what is there and infers `Any` for the rest."""
+    import ast
+
+    unannotated = []
+    for path in sorted((ROOT / "src" / "splicescope").glob("*.py")):
+        for node in ast.parse(path.read_text()).body:
+            if not isinstance(node, ast.FunctionDef) or node.name.startswith("_"):
+                continue
+            arguments = [a for a in node.args.args if a.arg not in {"self", "cls"}]
+            if node.returns is None and not any(a.annotation for a in arguments):
+                unannotated.append(f"{path.name}:{node.name}")
+    assert not unannotated, f"public functions with no annotations at all: {unannotated}"

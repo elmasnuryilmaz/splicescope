@@ -512,7 +512,13 @@ class Consequence:
 
 
 def _downstream_exon_lengths(tx: Transcript, start: int, end: int) -> list[int]:
-    """Lengths of the exons transcribed after the intron holding the event."""
+    """Lengths of the exons transcribed after the intron holding the event.
+
+    ``start``-``end`` must lie inside an intron of ``tx`` — which is what
+    :func:`host_transcripts` selects for, and what :func:`junction_change` produces —
+    so no exon of ``tx`` spans ``end`` and testing either end of an exon against it
+    gives the same answer. Pass an interval that overlaps an exon and it does not.
+    """
     blocks = tx.exons
     out = []
     for estart, eend in blocks:

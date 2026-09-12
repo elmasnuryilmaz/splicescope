@@ -8,19 +8,23 @@ a rule the suite is not checking, and it is free to come back in the next refact
 
 Every mutation below was written as a realistic mistake rather than a random edit — an
 inclusive comparison where it should be strict, a distance measured from the wrong end of
-a codon, a correction applied to the wrong array. Twenty of these passed the suite as it
-stood when each was first tried, including the 50-nucleotide rule the tool is built on,
-the last-exon exception, whether the reported q-value is Benjamini-Hochberg-adjusted at
-all, and seven of the eight features the cryptic-junction classifier learns from. A wrong
-feature does not make a model fail; it makes it learn the wrong thing and report a good
-score for doing so. Those are now covered.
+a codon, a correction applied to the wrong array. Twenty-eight of these passed the suite
+as it stood when each was first tried: the 50-nucleotide rule the tool is built on, the
+last-exon exception, whether the reported q-value is Benjamini-Hochberg-adjusted at all,
+seven of the eight features the cryptic-junction classifier learns from, and three
+defects reachable only from the minus strand, which the consequence layer was hardly
+tested on. Three of the twenty-eight are equivalent mutants; the other twenty-five are
+now each pinned by a test.
 
-Two mutants survive and are expected to: they are equivalent, not uncaught.
+Three mutants survive and are expected to: they are equivalent, not uncaught.
 
   - ``find_ptc`` stopping at ``len(sequence)`` instead of ``len(sequence) - 2`` only ever
     compares slices shorter than three characters, which cannot equal a stop codon.
   - Leaving the likelihood-ratio statistic unclamped gives the same p-value, because
     ``chi2.sf`` of a negative value is 1.0. Only the reported statistic would look wrong.
+  - Testing the far end of an exon rather than its near end in
+    ``_downstream_exon_lengths`` agrees for every exon, because the event always lies
+    inside an intron of the transcript and so no exon spans it.
 
     python validation/mutation_survey.py                 # every mutation
     python validation/mutation_survey.py --module enrich  # one module's
@@ -63,6 +67,58 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
     ("consequence", "a partial codon at the end may be a stop",
      "for i in range(begin, len(sequence) - 2, 3):",
      "for i in range(begin, len(sequence), 3):", "equivalent"),
+    # ---- consequence: transcript structure ----------------------------------------
+    ("consequence", "GTF phase added instead of subtracted",
+     "return (self.cds_length_before(position) - self.cds_phase) % 3",
+     "return (self.cds_length_before(position) + self.cds_phase) % 3", "caught"),
+    ("consequence", "GTF phase ignored, so a 5'-incomplete CDS starts mid-codon",
+     "return (self.cds_length_before(position) - self.cds_phase) % 3",
+     "return self.cds_length_before(position) % 3", "caught"),
+    ("consequence", "minus-strand blocks not put in transcription order",
+     "        self.exons = sorted(self.exons, reverse=reverse)",
+     "        self.exons = sorted(self.exons)", "caught"),
+    ("consequence", "intron bounds taken as the exon bounds",
+     "out = [(a[1] + 1, b[0] - 1) for a, b in zip(blocks, blocks[1:], strict=False)]",
+     "out = [(a[1], b[0]) for a, b in zip(blocks, blocks[1:], strict=False)]", "caught"),
+    ("consequence", "introns of a minus-strand transcript left in genomic order",
+     'return out[::-1] if self.strand == "-" else out', "return out", "caught"),
+    ("consequence", "coding length before a position off by one on the plus strand",
+     "                    total += position - cstart",
+     "                    total += position - cstart + 1", "caught"),
+    ("consequence", "coding length before a position off by one on the minus strand",
+     "                    total += cend - position",
+     "                    total += cend - position + 1", "caught"),
+    # ---- consequence: the sequence a ribosome would read ---------------------------
+    ("consequence", "downstream sequence not clipped at the event",
+     "            start = max(estart, resume)",
+     "            start = estart", "caught"),
+    ("consequence", "the exon holding the resume point dropped",
+     "            if eend < resume:\n                continue",
+     "            if eend <= resume:\n                continue", "caught"),
+    ("consequence", "downstream exon lengths off by one",
+     "        lengths.append(end - start + 1)",
+     "        lengths.append(end - start)", "caught"),
+    ("consequence", "exons after the event found by the wrong end",
+     "        after = estart > end if tx.strand == \"+\" else eend < start",
+     "        after = eend > end if tx.strand == \"+\" else estart < start", "equivalent"),
+    ("consequence", "transcription resumes at the furthest exon, not the next one",
+     "        return min(later) if later else None",
+     "        return max(later) if later else None", "caught"),
+    # ---- consequence: what the junction changes ------------------------------------
+    ("consequence", "extension and truncation swapped at the 3' end",
+     '            if end < iend:\n                return "extension", end + 1, iend\n'
+     '            return "truncation", iend + 1, end',
+     '            if end < iend:\n                return "truncation", end + 1, iend\n'
+     '            return "extension", iend + 1, end', "caught"),
+    ("consequence", "the exon-skip guard removed",
+     "        if start in starts and end in ends:\n            return None",
+     "        if start in starts and end in ends:\n            pass", "caught"),
+    ("consequence", "the extended stretch off by one at the 5' end",
+     '                return "extension", istart, start - 1',
+     '                return "extension", istart, start', "caught"),
+    ("consequence", "a host intron need only overlap the event, not contain it",
+     "            if istart <= start and end <= iend:",
+     "            if istart <= end and start <= iend:", "caught"),
     # ---- betabinom: the statistics ------------------------------------------------
     ("betabinom", "ungrouped samples left in the null",
      "    mask = mask & (group_a | group_b)[None, :]\n", "", "caught"),
@@ -227,6 +283,22 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
     ("cli", "exon-level consequences run on every event type but SE",
      '        table = events[events["event_type"] == "SE"].copy()',
      '        table = events[events["event_type"] != "SE"].copy()', "caught"),
+    # ---- plotting: the figures a reader looks at first ------------------------------
+    ("plotting", "volcano significance needs only one of the two thresholds",
+     '    sig = (d["qvalue"] <= q) & (d["delta_psi"].abs() >= min_delta)',
+     '    sig = (d["qvalue"] <= q) | (d["delta_psi"].abs() >= min_delta)', "caught"),
+    ("plotting", "volcano q-value threshold inverted",
+     '    sig = (d["qvalue"] <= q) & (d["delta_psi"].abs() >= min_delta)',
+     '    sig = (d["qvalue"] >= q) & (d["delta_psi"].abs() >= min_delta)', "caught"),
+    ("plotting", "the highlighted volcano points are the wrong ones",
+     'ax.scatter(d.loc[sig, "delta_psi"], y[sig], s=22, color=_ACCENT,',
+     'ax.scatter(d.loc[~sig, "delta_psi"], y[~sig], s=22, color=_ACCENT,', "caught"),
+    ("plotting", "volcano y axis not negated, so the best hits sink",
+     '    y = -np.log10(d["qvalue"].clip(lower=1e-300))\n    sig =',
+     '    y = np.log10(d["qvalue"].clip(lower=1e-300))\n    sig =', "caught"),
+    ("plotting", "the event volcano draws one event type in every colour",
+     '        m = d["event_type"] == etype',
+     '        m = d["event_type"] == next(iter(_EVENT_COLORS))', "caught"),
 ]
 
 

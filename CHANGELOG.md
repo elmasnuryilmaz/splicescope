@@ -48,6 +48,26 @@ All notable changes to this project are documented here. The format is based on
   what the previous code produced.
 
 ### Added
+- **Sixteen tests for the consequence layer on the minus strand.** Every coordinate in
+  that module means something different depending on the strand: donor and acceptor swap
+  ends, exons are walked in decreasing genomic order, coding length accumulates
+  downwards, and each piece of sequence is reverse-complemented on the way out. Half of
+  any genome is on that strand, and it was hardly tested — `test_consequence_pipeline.py`
+  never used it at all. Of sixteen deliberate defects in the module's structural code,
+  five passed the whole suite and three were reachable only from the minus strand: exon
+  blocks left in genomic rather than transcription order, the coding length before a
+  position counted one base too many, and the GTF phase added to the reading frame
+  instead of subtracted from it (which changes the frame, and so the stop codon, for
+  every 5'-incomplete CDS).
+
+  The main new test is a mirror. One gene is built on the plus strand and a second is its
+  exact reverse complement: the chromosome is reverse-complemented, every coordinate
+  reflected, the strand flipped. The two therefore describe the same transcript, the same
+  reading frame and the same event, so every field of every prediction has to agree —
+  whatever the right answer happens to be. Five splice-site shifts and three cassette
+  exons are compared this way, plus a check that the mirror is not agreeing merely
+  because both sides gave up.
+
 - **Thirteen tests for the features the classifier learns from.** Extending the
   mutation survey to `cryptic.py` found **seven of eight** deliberate defects passing the
   whole suite: the distance to the nearest known splice site searched only forwards from

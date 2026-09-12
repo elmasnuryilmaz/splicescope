@@ -334,7 +334,8 @@ def test_a_result_with_no_rows_still_has_the_columns_a_result_has(test):
     groups = _groups(psi)
 
     populated = differential_splicing(psi, groups, test=test)
-    empty = differential_splicing(psi, groups, test=test, min_samples=99)
+    with pytest.warns(UserWarning, match="nothing was tested"):
+        empty = differential_splicing(psi, groups, test=test, min_samples=99)
 
     assert len(populated) == 6 and empty.empty
     assert list(empty.columns) == list(populated.columns), "same schema, same order"

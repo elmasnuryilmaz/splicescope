@@ -347,6 +347,15 @@ def differential_splicing(
         )
     else:
         res = _ranksum_test(df, key, extra, value, a_name, b_name, min_samples)
+    if res.empty and not df.empty:
+        warnings.warn(
+            f"no unit had {min_samples} informative samples in both groups, so nothing "
+            f"was tested. An empty result is not a finding: it says the question could "
+            f"not be asked. {value!r} is NaN wherever a splice site carries fewer than "
+            "`min_reads` reads, so raising that threshold far enough empties the table "
+            "without any other sign.",
+            stacklevel=2,
+        )
     return _finalize(res)
 
 

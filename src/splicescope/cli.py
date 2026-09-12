@@ -120,7 +120,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
     summary.to_csv(outdir / "annotation_summary.tsv", sep="\t", index=False)
 
     psi = _quant.compute_psi(annotated, min_reads=args.min_reads)
-    diff = _diff.differential_splicing(psi, groups)
+    diff = _relaying("junctions", lambda: _diff.differential_splicing(psi, groups))
     diff.to_csv(outdir / "differential_splicing.tsv", sep="\t", index=False)
     hits = _diff.significant(diff)
     print(f"[run] {len(hits)} significant junctions (q<=0.05, |ΔΨ|>=0.1)")
@@ -143,7 +143,10 @@ def _cmd_run(args: argparse.Namespace) -> int:
     if not evs.empty:
         evs.to_csv(outdir / "events.tsv", sep="\t", index=False)
         epsi = _events.event_psi(annotated, evs, min_reads=args.min_reads)
-        ediff = _diff.differential_splicing(epsi, groups, value="psi", key=["event_id"])
+        ediff = _relaying(
+            "events",
+            lambda: _diff.differential_splicing(epsi, groups, value="psi", key=["event_id"]),
+        )
         ediff.to_csv(outdir / "event_differential.tsv", sep="\t", index=False)
         by_type = evs["event_type"].value_counts().to_dict()
         print(
@@ -202,11 +205,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
         # `enrich_differential` says when no gene set names a gene that was tested; it
         # is caught here only so the message looks like the CLI's other warnings rather
         # than like a Python one, and is not said twice.
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            enr = _enrich.enrich_differential(diff, gene_sets)
-        for entry in caught:
-            print(f"warning: {entry.message}", file=sys.stderr)
+        enr = _relaying("enrichment", lambda: _enrich.enrich_differential(diff, gene_sets))
         enr.to_csv(outdir / "enrichment.tsv", sep="\t", index=False)
         n_sig = int((enr["qvalue"] <= 0.05).sum()) if not enr.empty else 0
         print(f"[run] enrichment: {len(gene_sets)} sets, {len(enr)} tested, {n_sig} sig (q<=0.05)")
@@ -338,6 +337,22 @@ def _attach_labels(psi, path: str):
         f"{path}; the rest are left unlabelled"
     )
     return merged
+
+
+def _relaying(label: str, call):
+    """Run ``call``, reporting anything it warns about in the CLI's own format.
+
+    The library warns where the mistake is detectable, so that everyone using it is
+    covered; a terminal wants ``warning: …`` on stderr rather than a Python warning with
+    a file and a line number in it. ``label`` says which step raised it, since the same
+    sentence can come from the junction-level test and the event-level one.
+    """
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = call()
+    for entry in caught:
+        print(f"warning: {label}: {entry.message}", file=sys.stderr)
+    return result
 
 
 SHIFT_CLASSES = ("novel_donor", "novel_acceptor")

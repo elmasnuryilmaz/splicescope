@@ -263,3 +263,25 @@ def test_a_gtf_from_the_wrong_source_is_an_error_with_a_readable_message(dataset
     assert error.startswith("error: ")
     assert "name the same chromosomes differently" in error
     assert "GENCODE writes 'chr1' where Ensembl writes '1'" in error
+
+
+def test_the_cli_says_which_step_could_not_be_run(dataset, tmp_path, capsys):
+    """Library warnings reach a terminal as `warning: …` rather than as a Python warning
+    with a file and a line number, and labelled, because the same sentence comes from the
+    junction-level test and the event-level one."""
+    _, data, _ = dataset
+    rc = main(
+        [
+            "run",
+            "--sj-dir", str(data / "sj"),
+            "--gtf", str(data / "annotation.gtf"),
+            "--groups", str(data / "groups.tsv"),
+            "--outdir", str(tmp_path / "starved"),
+            "--min-reads", "1000000",
+        ]
+    )
+    assert rc == 0, "an impossible threshold is a choice, not a failure"
+    error = capsys.readouterr().err
+    assert "warning: junctions: no unit had" in error
+    assert "warning: events: no unit had" in error
+    assert "UserWarning" not in error, "not raw Python warnings"

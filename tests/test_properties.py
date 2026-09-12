@@ -12,6 +12,8 @@ So: real generators, and the invariants that have to hold whatever they produce.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pandas as pd
 from hypothesis import HealthCheck, assume, given, settings
@@ -311,8 +313,12 @@ def test_swapping_the_group_labels_flips_delta_psi_and_leaves_the_pvalue_alone(o
     first = {"A1": "aa", "A2": "aa", "B1": "bb", "B2": "bb"}
     second = {"A1": "bb", "A2": "bb", "B1": "aa", "B2": "aa"}
 
-    forward = differential_splicing(psi, first, min_samples=2).set_index(key)
-    backward = differential_splicing(psi, second, min_samples=2).set_index(key)
+    # generated junctions are often too sparse to test, and differential_splicing says
+    # so; `assume` below is what handles it, so the warning is not this test's subject
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        forward = differential_splicing(psi, first, min_samples=2).set_index(key)
+        backward = differential_splicing(psi, second, min_samples=2).set_index(key)
     assume(not forward.empty)
 
     assert set(forward.index) == set(backward.index)

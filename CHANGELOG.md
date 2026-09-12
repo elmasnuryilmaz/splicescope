@@ -301,6 +301,17 @@ All notable changes to this project are documented here. The format is based on
   before it failed none.
 
 ### Fixed
+- **A coverage threshold nothing can meet says so.** `--min-reads 100000` printed "0
+  significant junctions" and stopped, which reads as *no differential splicing* — a
+  conclusion. Not one unit was testable: Ψ is NaN wherever a splice site carries fewer
+  reads than the threshold, so raising it far enough empties the table with no other
+  sign. `differential_splicing` now says when no unit had enough informative samples in
+  both groups, which covers that cause and every other.
+- **Library warnings reach a terminal as the CLI's own.** Three checks now live in the
+  library, where everyone importing it is covered, and a terminal wants
+  `warning: junctions: …` rather than a Python warning carrying a file and a line
+  number. The CLI relays each one, labelled by the step that raised it, since the same
+  sentence comes from the junction-level test and the event-level one.
 - **Gene sets that name nothing tested say so.** With no identifier in common nothing
   can be tested, and the empty result reads as "no pathway is enriched" — a conclusion,
   where the truth is that the question was never asked. Gene-set files are keyed by

@@ -7,8 +7,11 @@ the boundary between "we did not measure this" and "we measured this to be zero"
 they are tested together.
 """
 
+import warnings
+
 import numpy as np
 import pandas as pd
+import pytest
 
 from splicescope.diff import _wide, differential_splicing
 from splicescope.quantify import add_unobserved_zeros, compute_psi
@@ -45,7 +48,11 @@ def test_raising_min_reads_removes_units_from_the_differential_test():
     counts = []
     for min_reads in (10, 200, 100_000):
         psi = compute_psi(ds.observed, min_reads=min_reads)
-        counts.append(len(differential_splicing(psi, ds.groups)))
+        with warnings.catch_warnings():
+            # the 100k threshold leaves nothing testable, which the function now says;
+            # this test is about the counts falling, not about that message
+            warnings.simplefilter("ignore", UserWarning)
+            counts.append(len(differential_splicing(psi, ds.groups)))
     assert counts[0] > counts[1] > counts[2]
     assert counts[2] == 0, "no unit can be informative at a 100k-read threshold"
 
@@ -60,7 +67,10 @@ def test_a_unit_below_the_coverage_threshold_is_never_called_significant():
     df = pd.DataFrame([r for r in rows if r["count"] > 0])
     psi = compute_psi(df, min_reads=10)
     assert psi["psi_donor"].isna().all()
-    assert differential_splicing(psi, GROUPS).empty
+    # and the caller is told that nothing was tested, rather than left to read an empty
+    # table as "no difference"
+    with pytest.warns(UserWarning, match="nothing was tested"):
+        assert differential_splicing(psi, GROUPS).empty
 
 
 # --------------------------------------------------------------------------------
@@ -247,3 +257,26 @@ def test_a_psi_matrix_instead_of_a_long_table_says_so():
     wide = psi_matrix(psi)
     with pytest.raises(ValueError, match="no 'sample' column"):
         differential_splicing(wide.reset_index(), GROUPS)
+
+
+def test_a_threshold_nothing_can_meet_says_so_instead_of_reporting_no_difference():
+    """`--min-reads 100000` printed "0 significant junctions" and stopped. That reads as
+    "no differential splicing", which is a conclusion; the truth is that not one unit
+    was testable. Ψ is NaN wherever a splice site is under the threshold, so raising it
+    far enough empties the table with no other sign."""
+    import pytest
+
+    psi = _small_psi()
+    with pytest.warns(UserWarning, match="nothing was tested"):
+        out = differential_splicing(compute_psi(psi, min_reads=10**6), GROUPS)
+    assert out.empty
+    assert list(out.columns), "and it still comes back with the schema of a result"
+
+
+def test_a_threshold_that_leaves_units_testable_says_nothing():
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        out = differential_splicing(_small_psi(), GROUPS)
+    assert not out.empty

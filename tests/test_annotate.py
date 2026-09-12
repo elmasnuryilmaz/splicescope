@@ -93,3 +93,52 @@ def test_an_unplaceable_junction_keeps_its_undefined_strand():
         [dict(chrom="chr2", start=500, end=900, strand=".", sample="s1", count=3)]
     )
     assert annotate_junctions(observed, known).loc[0, "strand"] == "."
+
+
+def test_an_annotation_with_no_junctions_is_refused():
+    """Every class but `cryptic` is defined by agreeing with the annotation, so an
+    empty one does not fail — it reports a genome of novel splicing. A GTF carrying only
+    gene or transcript records produces exactly that, because introns are derived from
+    exons."""
+    import pytest
+
+    observed = pd.DataFrame(
+        [dict(chrom="chr1", start=200, end=399, strand="+", sample="s1", count=40)]
+    )
+    empty = pd.DataFrame(columns=["chrom", "start", "end", "strand", "gene_id"])
+    with pytest.raises(ValueError, match="contains no junctions"):
+        annotate_junctions(observed, empty)
+
+
+@pytest.mark.parametrize(
+    ("junction_chrom", "annotation_chrom"),
+    [("chr1", "1"), ("1", "chr1")],
+)
+def test_chromosome_names_from_different_sources_are_refused(junction_chrom, annotation_chrom):
+    """GENCODE writes `chr1` where Ensembl writes `1`. Mixing them matches nothing, and
+    a run that calls every junction cryptic is the most exciting wrong answer this tool
+    can give."""
+    observed = pd.DataFrame(
+        [dict(chrom=junction_chrom, start=200, end=399, strand="+", sample="s1", count=40)]
+    )
+    known = pd.DataFrame(
+        [dict(chrom=annotation_chrom, start=200, end=399, strand="+", gene_id="G1")]
+    )
+    with pytest.raises(ValueError, match="name the same chromosomes differently"):
+        annotate_junctions(observed, known)
+
+
+def test_a_junction_on_a_contig_the_annotation_does_not_cover_is_ordinary():
+    """Scaffolds, decoys and a chromosome left out of a small analysis all produce
+    junctions the annotation says nothing about. That is not a mistake, so it is not an
+    error — only the naming mismatch is, because it is recognisable."""
+    observed = pd.DataFrame(
+        [
+            dict(chrom="chrUn_KI270742v1", start=200, end=399, strand="+",
+                 sample="s1", count=40),
+            dict(chrom="chr1", start=200, end=399, strand="+", sample="s1", count=40),
+        ]
+    )
+    known = pd.DataFrame([dict(chrom="chr1", start=200, end=399, strand="+", gene_id="G1")])
+    out = annotate_junctions(observed, known)
+    assert list(out["sclass"]) == ["cryptic", "annotated"]

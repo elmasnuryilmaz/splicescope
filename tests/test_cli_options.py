@@ -234,3 +234,32 @@ def test_the_consequence_subcommand_names_the_columns_it_needs(dataset, tmp_path
     assert run_consequence("--mode", "junction") == 2
     error = capsys.readouterr().err
     assert "missing columns" in error and "strand" in error
+
+
+def test_a_gtf_from_the_wrong_source_is_an_error_with_a_readable_message(dataset, tmp_path, capsys):
+    """The mistake is easy and the wrong answer is exciting: mix an Ensembl GTF with
+    chr-prefixed alignments and every junction comes out cryptic. The CLI must say so
+    the way it says everything else, not as a traceback."""
+    _, data, _ = dataset
+    ensembl = tmp_path / "ensembl.gtf"
+    ensembl.write_text(
+        "\n".join(
+            line.replace("chr1\t", "1\t", 1)
+            for line in (data / "annotation.gtf").read_text().splitlines()
+        )
+        + "\n"
+    )
+    rc = main(
+        [
+            "run",
+            "--sj-dir", str(data / "sj"),
+            "--gtf", str(ensembl),
+            "--groups", str(data / "groups.tsv"),
+            "--outdir", str(tmp_path / "out"),
+        ]
+    )
+    assert rc == 2
+    error = capsys.readouterr().err
+    assert error.startswith("error: ")
+    assert "name the same chromosomes differently" in error
+    assert "GENCODE writes 'chr1' where Ensembl writes '1'" in error

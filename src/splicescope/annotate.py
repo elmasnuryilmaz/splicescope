@@ -109,6 +109,53 @@ def resolve_unstranded(observed: pd.DataFrame, known: pd.DataFrame) -> pd.DataFr
     return out
 
 
+def _check_annotation(observed: pd.DataFrame, known: pd.DataFrame) -> None:
+    """Refuse an annotation nothing can be matched against.
+
+    Every class but ``cryptic`` is defined by agreeing with the annotation, so an
+    annotation that matches nothing does not fail — it reports a genome of novel
+    splicing. That is the most exciting result this tool can produce and the easiest one
+    to produce by accident, which makes silence the wrong response.
+
+    Two ways to get there, both common. A GTF with no ``exon`` records yields no
+    introns, because introns are the gaps between exons. And GENCODE writes ``chr1``
+    where Ensembl writes ``1``, so a GTF and an aligner's output from different sources
+    share no chromosome name at all.
+
+    Only those two are refused. A junction on a contig the annotation does not cover is
+    ordinary — scaffolds, a decoy, a chromosome left out of a small analysis — so "no
+    chromosome in common" is not by itself an error. The naming mismatch is, because it
+    is recognisable: strip or add the ``chr`` prefix and the two agree exactly.
+    """
+    if known.empty:
+        raise ValueError(
+            "the annotation contains no junctions, so every observed junction would be "
+            "classified 'cryptic' and the run would report a genome of novel splicing. "
+            "Introns are derived from exons, so a GTF carrying only gene or transcript "
+            "records produces this."
+        )
+    if "chrom" not in observed.columns or observed.empty:
+        return
+    seen = {str(c) for c in observed["chrom"].dropna()}
+    annotated = {str(c) for c in known["chrom"].dropna()}
+    if seen & annotated:
+        return
+
+    def bare(names):
+        return {n[3:] if n.lower().startswith("chr") else n for n in names}
+
+    if not bare(seen) & bare(annotated):
+        return  # genuinely different contigs, which is nobody's mistake
+    raise ValueError(
+        "the junctions and the annotation name the same chromosomes differently, so "
+        "nothing can be matched and every junction would be called 'cryptic'.\n"
+        f"  in the junctions:  {sorted(seen)[:6]}\n"
+        f"  in the annotation: {sorted(annotated)[:6]}\n"
+        "  GENCODE writes 'chr1' where Ensembl writes '1'. Use a GTF from the same "
+        "source as the genome the reads were aligned to."
+    )
+
+
 def annotate_junctions(observed: pd.DataFrame, known: pd.DataFrame) -> pd.DataFrame:
     """Annotate a table of observed junctions.
 
@@ -119,6 +166,7 @@ def annotate_junctions(observed: pd.DataFrame, known: pd.DataFrame) -> pd.DataFr
     Strand-undefined junctions are first placed against the annotation where they can
     be — see :func:`resolve_unstranded`.
     """
+    _check_annotation(observed, known)
     observed = resolve_unstranded(observed, known)
     junctions, donors, acceptors, gene_of_site, gene_of_junction = _site_sets(known)
 

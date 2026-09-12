@@ -301,6 +301,22 @@ All notable changes to this project are documented here. The format is based on
   before it failed none.
 
 ### Fixed
+- **An annotation nothing can match is refused instead of reporting a genome of novel
+  splicing.** Every junction class but `cryptic` is defined by agreeing with the
+  annotation, so an annotation that matches nothing does not fail — it calls everything
+  cryptic. That is the most exciting result this tool can produce and the easiest one to
+  produce by accident. Two ways in, both silent until now:
+
+  - a GTF carrying only gene or transcript records, which yields no introns at all,
+    because introns are the gaps between exons;
+  - a GTF and an aligner's output from different sources, since GENCODE writes `chr1`
+    where Ensembl writes `1`.
+
+  Both are now errors that name what is wrong, and the CLI prints them the way it prints
+  its other refusals rather than as a traceback. Only those two: a junction on a contig
+  the annotation does not cover — a scaffold, a decoy, a chromosome left out of a small
+  analysis — is ordinary and still runs. The naming mismatch is distinguishable from it
+  because stripping the `chr` prefix makes the two agree exactly.
 - **`CONSEQUENCE_CLASSES` lived in a test file.** The set of things the consequence
   layer can say was defined in `tests/test_consequence_pipeline.py` and nowhere in the
   package, so anything exhaustive over the eight classes had no list to be exhaustive

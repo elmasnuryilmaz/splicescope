@@ -108,7 +108,13 @@ def _cmd_run(args: argparse.Namespace) -> int:
     observed = _io.read_many_star_sj(sj_paths)
     known = _io.read_gtf_junctions(args.gtf)
 
-    annotated = _annot.annotate_junctions(observed, known)
+    try:
+        annotated = _annot.annotate_junctions(observed, known)
+    except ValueError as exc:
+        # the annotation checks raise with a message written for a reader; a traceback
+        # would bury it, and the CLI's other refusals look like this
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     summary = _annot.annotation_summary(annotated)
     summary.to_csv(outdir / "annotation_summary.tsv", sep="\t", index=False)
 

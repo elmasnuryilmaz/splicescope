@@ -104,10 +104,8 @@ def detect_cassette_events(annotated: pd.DataFrame) -> pd.DataFrame:
 
 def _with_sites(annotated: pd.DataFrame) -> pd.DataFrame:
     df = annotated.copy()
-    da = [
-        donor_acceptor(s, e, st)
-        for s, e, st in zip(df["start"], df["end"], df["strand"], strict=False)
-    ]
+    coords = (df["start"].to_numpy(), df["end"].to_numpy(), df["strand"].to_numpy())
+    da = [donor_acceptor(s, e, st) for s, e, st in zip(*coords, strict=True)]
     df["donor"] = [d for d, _ in da]
     df["acceptor"] = [a for _, a in da]
     return df

@@ -27,6 +27,26 @@ All notable changes to this project are documented here. The format is based on
   only in floating-point noise. The smaller side is always the one summed outright, so
   the subtraction never has to recover a small number from two near-equal ones.
 
+- **Annotation resolves each junction once, not once per sample.** A junction's class
+  and gene depend only on its coordinates, but they were being recomputed for every row
+  of every sample — on a six-sample human-sized table four fifths of the work was
+  repeats. Reading the values was the other half of it: pandas 3 backs string columns
+  with Arrow, and pulling a million values out of one an element at a time cost more
+  than the classification did, so each coordinate column is now converted in one call.
+  The same two-line change applies in `compute_psi` and in the event detectors' site
+  helper, so the fast spelling is the only one left in the codebase.
+
+  | 998 000 rows over 6 samples | before | after |
+  |---|---|---|
+  | `annotate_junctions` | 3.6 s | 2.1 s |
+  | whole pipeline through events | 19.8 s | 17.1 s |
+
+  At 20 samples the annotation step is 2.3× faster, since that is where the repeats are.
+  Checked by output rather than by tests alone: the annotated frame is identical — same
+  columns, same index, same values — on a human-scale table, a 20-sample one and the
+  simulator's, and every one of the six TSVs a full CLI run writes is byte-identical to
+  what the previous code produced.
+
 ### Added
 - **Two tests for things the event suite could not see.** Every hand-built event test
   uses one chromosome, so a grouping key that forgot the chromosome would pool junctions
@@ -41,6 +61,7 @@ All notable changes to this project are documented here. The format is based on
   dropping the chromosome from any of the three grouping keys now fails a test, where
   before it failed none.
 
+### Fixed
 - **`differential_splicing` refuses a sample/group mismatch instead of returning
   nothing.** If no sample in the Psi table is named in `groups`, every row is
   unassigned, every unit fails `min_samples`, and an empty table comes back: the caller
@@ -50,8 +71,6 @@ All notable changes to this project are documented here. The format is based on
   since that is usually a real experiment with a sample dropped. A misspelled `value`
   column, a `key` column the table lacks, and a Psi table with no `sample` column now
   say so too, instead of surfacing as a `KeyError` from inside pandas.
-
-### Fixed
 - **A gene set with a member outside the background no longer raises `KeyError`.** Only
   genes that were tested can be drawn, so such a member is simply not in the set for the
   purpose of the odds; it was being looked up in the propensity table regardless.

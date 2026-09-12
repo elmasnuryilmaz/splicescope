@@ -23,17 +23,23 @@ CLASSES = ["annotated", "novel_combination", "novel_donor", "novel_acceptor", "c
 
 
 def _site_sets(known: pd.DataFrame):
-    junctions = set(
-        zip(known["chrom"], known["start"], known["end"], known["strand"], strict=False)
-    )
     has_name = "gene_name" in known.columns
     columns = ["chrom", "start", "end", "strand", "gene_id"] + (["gene_name"] if has_name else [])
+    # Each column is converted once. pandas 3 backs string columns with Arrow, and
+    # reading one a value at a time costs several times what is then done with the
+    # values — on a GENCODE-sized annotation it was the largest single cost in
+    # annotating a whole experiment.
+    chroms, starts, ends, strands, genes, *rest = (known[c].to_numpy() for c in columns)
+    # keep the symbol alongside the accession: gene-set files use one or the other
+    names = rest[0] if has_name else genes
+
+    junctions = set(zip(chroms, starts, ends, strands, strict=True))
     donors, acceptors, gene_of_site = set(), set(), {}
     gene_of_junction = {}
-    for record in known[columns].itertuples(index=False):
-        chrom, start, end, strand, gene = record[:5]
-        # keep the symbol alongside the accession: gene-set files use one or the other
-        value = (gene, record[5] if has_name else gene)
+    for chrom, start, end, strand, gene, name in zip(
+        chroms, starts, ends, strands, genes, names, strict=True
+    ):
+        value = (gene, name)
         d, a = donor_acceptor(start, end, strand)
         donors.add((chrom, d, strand))
         acceptors.add((chrom, a, strand))
@@ -116,25 +122,37 @@ def annotate_junctions(observed: pd.DataFrame, known: pd.DataFrame) -> pd.DataFr
     observed = resolve_unstranded(observed, known)
     junctions, donors, acceptors, gene_of_site, gene_of_junction = _site_sets(known)
 
-    sclass, genes, names = [], [], []
-    for chrom, start, end, strand in observed[["chrom", "start", "end", "strand"]].itertuples(
-        index=False
-    ):
-        cls = classify_one(chrom, start, end, strand, junctions, donors, acceptors)
-        sclass.append(cls)
+    # A junction's class and gene depend only on its coordinates, so each distinct one
+    # is resolved once and the answer reused. A six-sample experiment lists every
+    # junction six times, and on a human-sized table four fifths of the rows are repeats.
+    # The keys come from to_numpy() rather than itertuples(): pandas 3 backs string
+    # columns with Arrow, and pulling 1.3 million values out of one an element at a time
+    # cost more than the classification did.
+    columns = [observed[c].to_numpy() for c in ("chrom", "start", "end", "strand")]
+    rows = list(zip(*columns, strict=True))
+
+    resolved: dict[tuple, tuple] = {}
+    for key in rows:
+        if key in resolved:
+            continue
+        chrom, start, end, strand = key
         d, a = donor_acceptor(start, end, strand)
         gene = (
             gene_of_junction.get((chrom, start, end, strand))
             or gene_of_site.get((chrom, d, strand))
             or gene_of_site.get((chrom, a, strand))
         )
-        genes.append(gene[0] if gene else None)
-        names.append(gene[1] if gene else None)
+        resolved[key] = (
+            classify_one(chrom, start, end, strand, junctions, donors, acceptors),
+            gene[0] if gene else None,
+            gene[1] if gene else None,
+        )
 
+    answers = [resolved[key] for key in rows]
     out = observed.copy()
-    out["sclass"] = pd.Categorical(sclass, categories=CLASSES)
-    out["gene_id"] = genes
-    out["gene_name"] = names
+    out["sclass"] = pd.Categorical([a[0] for a in answers], categories=CLASSES)
+    out["gene_id"] = [a[1] for a in answers]
+    out["gene_name"] = [a[2] for a in answers]
     out["is_novel"] = out["sclass"] != "annotated"
     return out
 

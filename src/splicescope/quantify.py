@@ -82,10 +82,10 @@ def compute_psi(
     behaviour, which silently discarded junctions absent from a whole group.
     """
     df = annotated.copy()
-    da = [
-        donor_acceptor(s, e, st)
-        for s, e, st in zip(df["start"], df["end"], df["strand"], strict=False)
-    ]
+    # to_numpy() per column, not a value at a time: pandas 3 backs the strand column
+    # with Arrow and reading a million values out of one costs four times this whole step.
+    coords = (df["start"].to_numpy(), df["end"].to_numpy(), df["strand"].to_numpy())
+    da = [donor_acceptor(s, e, st) for s, e, st in zip(*coords, strict=True)]
     df["donor"] = [d for d, _ in da]
     df["acceptor"] = [a for _, a in da]
     if fill_unobserved:

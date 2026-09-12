@@ -229,21 +229,42 @@ That's the whole tour — from junctions to events to cryptic calls, reproducibl
 
 def build() -> nbformat.NotebookNode:
     nb = new_notebook()
-    for kind, src in CELLS:
-        nb.cells.append(new_markdown_cell(src) if kind == "md" else new_code_cell(src))
+    for i, (kind, src) in enumerate(CELLS):
+        cell = new_markdown_cell(src) if kind == "md" else new_code_cell(src)
+        # nbformat draws a random id per cell, so a rebuild that changed nothing still
+        # rewrote every one of them. Number them instead: then `git diff` on this file
+        # shows the analysis changing and nothing else.
+        cell["id"] = f"cell-{i:02d}"
+        nb.cells.append(cell)
     return nb
+
+
+def _make_reproducible(nb: nbformat.NotebookNode) -> None:
+    """Strip everything that records *when* the notebook ran rather than what it did.
+
+    The committed outputs are the claim this repo makes about its own reproducibility, so
+    a rebuild has to be checkable: run this script, and if the file did not change, the
+    committed notebook is what the current code produces. Wall-clock timestamps and
+    random cell ids made every rebuild a 200-line diff, which hid a real one — the
+    tutorial spent some time reporting 43 significant junctions where the code found 46,
+    and the diff that would have said so was indistinguishable from noise.
+    """
+    # a generic kernelspec, no venv-specific name, so the file opens anywhere
+    nb.metadata["kernelspec"] = {
+        "display_name": "Python 3",
+        "language": "python",
+        "name": "python3",
+    }
+    for cell in nb.cells:
+        # iopub.execute_input / status.busy / status.idle / shell.execute_reply
+        cell.get("metadata", {}).pop("execution", None)
 
 
 def main() -> None:
     nb = build()
     print(f"executing {len(nb.cells)} cells ...")
     NotebookClient(nb, timeout=600, kernel_name="splicescope-venv").execute()
-    # keep the file portable: a generic kernelspec, no venv-specific name
-    nb.metadata["kernelspec"] = {
-        "display_name": "Python 3",
-        "language": "python",
-        "name": "python3",
-    }
+    _make_reproducible(nb)
     nbformat.write(nb, OUT)
     print(f"wrote {OUT}")
 

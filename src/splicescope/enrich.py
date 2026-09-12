@@ -35,6 +35,13 @@ _ACCESSION = re.compile(r"^(?:ENS[A-Z]*[EGTP]\d+|[A-Z]{2}_\d+)$", re.IGNORECASE)
 _PSEUDO_HITS = 0.5
 _PSEUDO_TOTAL = 1.0
 
+# The schema of an over-representation result. An empty result carries it too: a caller
+# that indexes a column on a populated frame must not get a KeyError on an empty one.
+RESULT_COLUMNS = [
+    "term", "set_size", "overlap", "n_hits", "n_background",
+    "fold_enrichment", "bias_odds", "pvalue", "qvalue", "genes",
+]
+
 
 def normalize_gene_id(gene: str) -> str:
     """Put an identifier in the form both sides of an intersection can agree on.
@@ -197,7 +204,8 @@ def over_representation(
         Wallenius becomes at odds 1.
 
     Returns one row per tested set with the 2×2 counts, fold enrichment, p-value
-    and BH q-value, sorted by q-value. Uses the survival function
+    and BH q-value, sorted by q-value, and carries :data:`RESULT_COLUMNS` whether or
+    not anything was tested. Uses the survival function
     ``P(X ≥ k) = hypergeom.sf(k-1, M, n, N)`` with ``M`` background size, ``n`` set
     size in background, ``N`` number of hits in background, ``k`` the overlap, plus
     ``bias_odds`` when weights were given.
@@ -219,12 +227,7 @@ def over_representation(
         propensity = selection_propensity(bg, hit_set, merged)
         table = _odds_table(bg, propensity)
     if M == 0 or N == 0:
-        return pd.DataFrame(
-            columns=[
-                "term", "set_size", "overlap", "n_hits", "n_background",
-                "fold_enrichment", "bias_odds", "pvalue", "qvalue", "genes",
-            ]
-        )
+        return pd.DataFrame(columns=RESULT_COLUMNS)
 
     records = []
     for term, genes in gene_sets.items():
@@ -258,8 +261,14 @@ def over_representation(
 
     res = pd.DataFrame.from_records(records)
     if res.empty:
-        return res
+        # No gene set overlapped a hit. ``from_records([])`` has no columns at all, so
+        # returning it here would hand back a frame whose schema depends on whether
+        # anything was found.
+        return pd.DataFrame(columns=RESULT_COLUMNS)
     res["qvalue"] = benjamini_hochberg(res["pvalue"].to_numpy())
+    # ``qvalue`` is assigned after the records are built, so without this it lands last
+    # and a populated result has a different column *order* from an empty one.
+    res = res[RESULT_COLUMNS]
     return res.sort_values(["qvalue", "pvalue"]).reset_index(drop=True)
 
 

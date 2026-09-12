@@ -439,3 +439,92 @@ def test_the_genome_check_accepts_any_contig_long_enough(reach, slack):
         events = pd.DataFrame([dict(chrom="chr1", start=1, end=reach, strand="+")])
         with GenomeFasta(fasta) as genome:
             check_genome(events, tx, genome)  # must not raise
+
+
+@st.composite
+def gene_universe(draw, n_genes=None):
+    """A background, a subset of hits, per-gene opportunity, and some gene sets."""
+    n = n_genes or draw(st.integers(min_value=6, max_value=60))
+    genes = [f"G{i:04d}" for i in range(n)]
+    hits = draw(st.lists(st.sampled_from(genes), min_size=1, max_size=n, unique=True))
+    weights = {g: float(draw(st.integers(min_value=1, max_value=40))) for g in genes}
+    sets = {
+        f"S{j}": draw(st.lists(st.sampled_from(genes), min_size=2, max_size=n, unique=True))
+        for j in range(draw(st.integers(min_value=1, max_value=4)))
+    }
+    return genes, hits, weights, sets
+
+
+@given(gene_universe())
+@SLOW
+def test_over_representation_reports_probabilities_and_the_same_sets_either_way(universe):
+    """Whatever the overlap, a p-value is a probability and a fold enrichment is
+    positive. And weighting changes how surprising a set is, never which sets are
+    testable — so the two runs must agree on the rows even where they disagree on the
+    numbers."""
+    from splicescope.enrich import RESULT_COLUMNS, over_representation
+
+    genes, hits, weights, sets = universe
+    plain = over_representation(hits, genes, sets)
+    weighted = over_representation(hits, genes, sets, weights=weights)
+
+    assert set(plain["term"]) == set(weighted["term"]), "weighting is not a filter"
+    for frame in (plain, weighted):
+        # the schema does not depend on whether anything came out
+        assert list(frame.columns) == RESULT_COLUMNS
+        if frame.empty:
+            continue
+        assert frame["pvalue"].between(0.0, 1.0).all()
+        assert frame["qvalue"].between(0.0, 1.0).all()
+        assert (frame["fold_enrichment"] > 0).all()
+        assert (frame["overlap"] > 0).all(), "a set with no hit is not reported"
+        assert (frame["overlap"] <= frame["set_size"]).all()
+        assert (frame["bias_odds"] > 0).all()
+        # the docstring promises "sorted by q-value", and a reader takes the top row
+        assert frame["qvalue"].is_monotonic_increasing
+
+
+@given(gene_universe())
+@SLOW
+def test_every_background_gene_gets_a_propensity_strictly_inside_zero_and_one(universe):
+    """The odds `p/(1-p)` that the weighted null averages are infinite at either end, so
+    the smoothing has to keep every estimate off both. This is what stopped one gene
+    rewriting a whole enrichment table."""
+    from splicescope.enrich import selection_propensity
+
+    genes, hits, weights, _ = universe
+    propensity = selection_propensity(genes, hits, weights)
+    assert set(propensity) == {g.upper() for g in genes}
+    assert all(0.0 < p < 1.0 for p in propensity.values()), min(propensity.values())
+    assert len(set(propensity.values())) <= len(genes)
+
+
+@given(
+    st.integers(min_value=4, max_value=30),
+    st.floats(min_value=0.0, max_value=1.0),
+    st.floats(min_value=0.0, max_value=1.0),
+    st.integers(min_value=0, max_value=10),
+)
+@SLOW
+def test_the_simulator_only_ever_claims_events_it_could_place(n_genes, cryptic, alt, seed):
+    """The truth table is what recall is measured against, so a row in it that the data
+    does not support would quietly inflate every recall number in the repository."""
+    from splicescope.simulate import simulate_dataset
+
+    ds = simulate_dataset(
+        n_genes=n_genes, n_per_group=3, cryptic_fraction=cryptic, alt_ss_fraction=alt,
+        mxe_fraction=0.3, seed=seed,
+    )
+    introns = {(r.start, r.end) for r in ds.known.itertuples(index=False)}
+    used = list(zip(ds.truth["intron_start"], ds.truth["intron_end"], strict=True))
+    assert len(used) == len(set(used)), "one intron carries at most one event"
+    for start, end in used:
+        assert (start, end) in introns, "the truth names an intron not in the annotation"
+
+    for row in ds.truth.itertuples(index=False):
+        for field in ("exonA_start", "exonA_end", "exonB_start", "exonB_end", "alt_pos"):
+            value = getattr(row, field)
+            if value is not pd.NA and value == value:
+                assert row.intron_start <= value <= row.intron_end, (
+                    f"{field}={value} lies outside its host intron"
+                )

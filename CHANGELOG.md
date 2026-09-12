@@ -327,6 +327,29 @@ All notable changes to this project are documented here. The format is based on
   before it failed none.
 
 ### Fixed
+- **Rebuilding the tutorial is now a meaningful check.** `examples/tutorial.ipynb`
+  ships its executed outputs, which are a claim about what the current code does — but
+  the claim was not checkable, because every rebuild rewrote 24 random cell ids and four
+  wall-clock timestamps per cell. A real change arrived as a handful of lines inside two
+  hundred lines of churn, which is how the tutorial spent time reporting 43 significant
+  junctions where the code found 46 with nothing looking wrong. Cell ids are now
+  numbered and the execution metadata is stripped, so two rebuilds of unchanged code
+  produce a byte-identical file and `git diff` shows the analysis moving or nothing at
+  all. A test checks that the committed notebook is still the builder's — a notebook
+  hand-edited in Jupyter and committed would otherwise be discarded silently by the next
+  rebuild.
+- **An enrichment result that found nothing had no columns.** Found by a property test,
+  which could not index the frame it got back. `over_representation` skips a gene set
+  that contains no hit, so a collection where none of them overlaps left the record list
+  empty and `pd.DataFrame.from_records([])` returned a frame with no columns at all.
+  Selecting `term` raised a `KeyError` on that frame and worked on every other one, and
+  `to_csv` wrote a headerless file for a run that did test sets and enriched none — the
+  ordinary outcome of asking an honest question. The schema is now a single constant,
+  `enrich.RESULT_COLUMNS`, returned by both empty paths *and* imposed on the populated
+  one: `qvalue` is computed after the records are built, so it used to land last there
+  and second-to-last in the early return. An empty result and a full one are now the same
+  table with a different number of rows. Same defect class as the `differential_splicing`
+  fix below, in the other module that had it.
 - **`describe` raised on a premature stop with no recorded distance.** Found by a
   property test over every combination of the fields a row can carry. The `ptc_escape`
   branch handled a missing distance — the last-exon case, where there is no junction

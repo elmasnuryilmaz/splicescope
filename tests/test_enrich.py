@@ -549,3 +549,34 @@ def test_the_warning_names_both_spellings_so_the_mismatch_is_visible():
     message = str(caught[0].message)
     assert "STMN2" in message or "TARDBP" in message, "what the gene sets look like"
     assert "ENSG" in message, "what the annotation looks like"
+
+
+def test_a_result_with_no_rows_still_has_the_columns_a_result_has():
+    """Found by a property test, which could not even index the empty frame it got back.
+
+    `over_representation` skips a gene set that contains no hit, so a collection where
+    none of them overlaps left `records` empty and `from_records([])` returned a frame
+    with no columns at all. The M == 0 / N == 0 path next to it already returned the
+    full schema, so the shape of an empty result depended on *which* way it came out
+    empty: selecting a column raised KeyError on one and worked on the other, and
+    `to_csv` wrote a headerless file for a run that tested sets and enriched none.
+    """
+    from splicescope.enrich import RESULT_COLUMNS
+
+    background = [f"G{i:04d}" for i in range(8)]
+    hits = background[:3]
+
+    populated = over_representation(hits, background, {"S": background[:4]})
+    # every set is real and sized, none of them contains a hit
+    no_overlap = over_representation(hits, background, {"S": background[4:6]})
+    # nothing is a hit at all — the other empty path
+    no_hits = over_representation([], background, {"S": background[:4]})
+
+    assert len(populated) == 1 and no_overlap.empty and no_hits.empty
+    for empty in (no_overlap, no_hits):
+        assert list(empty.columns) == list(populated.columns) == RESULT_COLUMNS
+        # the things a caller does next, which used to raise on this frame
+        assert empty["term"].empty and empty[["pvalue", "qvalue", "genes"]].empty
+        assert empty.to_csv(index=False).splitlines()[0] == (
+            populated.to_csv(index=False).splitlines()[0]
+        ), "same header, so a run that found nothing still writes a readable file"

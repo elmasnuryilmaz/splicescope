@@ -165,3 +165,39 @@ def test_the_nmd_animation_flips_where_the_rule_says_it_does():
     assert before > NMD_DISTANCE_RULE >= after, (
         f"the flip straddles {NMD_DISTANCE_RULE}: {before} nt then {after} nt"
     )
+
+
+def test_the_committed_tutorial_is_the_one_the_builder_produces():
+    """`examples/tutorial.ipynb` ships its executed outputs, and those outputs are a
+    claim: this is what the current code does. The claim is only checkable if rebuilding
+    the notebook and diffing it means something, and for a long time it did not — every
+    rebuild rewrote 24 random cell ids and four execution timestamps per cell, so a real
+    change arrived as four lines inside two hundred lines of noise. That is how the
+    tutorial came to report 43 significant junctions where the code found 46.
+
+    Executing the notebook takes minutes, so this does not do it. It checks the two
+    things that make the rebuild-and-diff check work: the file carries nothing that
+    records *when* it ran, and its cells are still the builder's cells — a notebook
+    edited in Jupyter and committed would pass neither, and would be silently discarded
+    by the next rebuild.
+    """
+    import json
+
+    builder = _load_from(ROOT / "examples" / "_build_tutorial.py", "_build_tutorial")
+    committed = json.loads((ROOT / "examples" / "tutorial.ipynb").read_text())
+    expected = builder.build()
+
+    assert len(committed["cells"]) == len(expected.cells), "a cell was added or removed"
+    for i, (got, want) in enumerate(zip(committed["cells"], expected.cells, strict=True)):
+        assert got["source"] == want["source"].splitlines(keepends=True), (
+            f"cell {i} is not the builder's — edit examples/_build_tutorial.py, not the "
+            f".ipynb, then rerun it"
+        )
+        assert got["id"] == want["id"] == f"cell-{i:02d}", "cell ids must be stable"
+        assert "execution" not in got.get("metadata", {}), (
+            f"cell {i} carries wall-clock timestamps, so every rebuild is a diff"
+        )
+
+    assert committed["metadata"]["kernelspec"]["name"] == "python3", (
+        "a venv-specific kernel name would not open on anyone else's machine"
+    )

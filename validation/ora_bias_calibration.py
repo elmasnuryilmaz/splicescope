@@ -56,27 +56,40 @@ def report(name: str, pvalues: np.ndarray) -> None:
     )
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--universes", type=int, default=12)
-    args = parser.parse_args()
+def measure(universes: int = 12) -> dict[str, np.ndarray]:
+    """p-values from every null gene set, with and without the weighting.
 
+    Separated from the printing so that a test can compare these against the table in
+    ``docs/METHODS.md``: a documented measurement and the script that produces it are
+    two sources of truth until something checks that they agree.
+    """
     plain, weighted = [], []
-    for seed in range(args.universes):
+    for seed in range(universes):
         genes, hits, weights, by_size = universe(seed)
         gene_sets = null_gene_sets(np.random.default_rng(seed), by_size)
         plain.append(over_representation(hits, genes, gene_sets)["pvalue"].to_numpy())
         weighted.append(
             over_representation(hits, genes, gene_sets, weights=weights)["pvalue"].to_numpy()
         )
-    plain, weighted = np.concatenate(plain), np.concatenate(weighted)
+    return {
+        "plain hypergeometric": np.concatenate(plain),
+        "opportunity-weighted": np.concatenate(weighted),
+    }
 
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--universes", type=int, default=12)
+    args = parser.parse_args()
+
+    results = measure(args.universes)
     print(
-        f"{len(plain)} biologically null gene sets over {args.universes} universes of "
-        f"{N_GENES} genes.\nEvery rejection below is a false positive.\n"
+        f"{len(results['plain hypergeometric'])} biologically null gene sets over "
+        f"{args.universes} universes of {N_GENES} genes.\n"
+        "Every rejection below is a false positive.\n"
     )
-    report("plain hypergeometric", plain)
-    report("opportunity-weighted", weighted)
+    for name, pvalues in results.items():
+        report(name, pvalues)
     print(
         "\n  The weighting is not free of assumptions — the propensity is estimated from\n"
         "  the very hits being scored — but the uncorrected test is unusable here, and\n"

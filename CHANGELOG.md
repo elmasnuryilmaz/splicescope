@@ -55,6 +55,11 @@ All notable changes to this project are documented here. The format is based on
   what the previous code produced.
 
 ### Added
+- **The ORA calibration table in METHODS is checked against the script that produces
+  it.** `validation/ora_bias_calibration.py` gained a `measure()` function, and a test
+  runs it and compares every figure in the §7b table at the precision the table quotes.
+  It found the table stale on its first run, which is how it earned its place.
+
 - **`constraints-oldest.txt` and a CI job that installs it.** Every dependency has a
   declared floor in `pyproject.toml`, and the CI matrix resolves to the newest of
   everything on every Python it tests, so nothing ever checked that the floor was real —
@@ -204,6 +209,11 @@ All notable changes to this project are documented here. The format is based on
   before it failed none.
 
 ### Fixed
+- **METHODS §7b quoted a false-positive rate the code no longer produces.** The weighted
+  ORA's rate on biologically null gene sets moved from 1.9 % to 2.1 % when the propensity
+  estimate gained its Jeffreys smoothing in 0.9.1 — a change the release notes describe —
+  but the table in §7b was not updated with it. The 0.9.1 entry that quotes the older
+  figure now says which one the release ships.
 - **The limitations section denied a feature the README advertises.** METHODS §9 said Ψ
   here is splice-site usage "not event-level PSI (cassette exon, A5SS/A3SS, IR)", while
   §5b specifies event-level PSI, `detect_events` returns all four classes and the
@@ -285,7 +295,8 @@ All notable changes to this project are documented here. The format is based on
   propensity, and the p-value comes from Wallenius' non-central hypergeometric with
   odds = (mean of `p/(1-p)` inside the set) / (mean outside) — `goseq`'s device applied to
   junction count instead of transcript length. The same simulation then gives **1.9 %** at
-  p ≤ 0.05 and 0 % at p ≤ 1e-6. Tied weights share a bin, so a gene's propensity cannot
+  p ≤ 0.05 and 0 % at p ≤ 1e-6 (2.1 % once the smoothing below is applied, which is what
+  this release actually ships). Tied weights share a bin, so a gene's propensity cannot
   depend on its name. `bias_odds` reports the odds per set and
   `weight_by_units=False` restores the plain test, which Wallenius equals at odds 1.
   One deliberate departure from `goseq`: it averages probabilities where this averages

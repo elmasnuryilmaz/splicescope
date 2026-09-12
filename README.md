@@ -156,7 +156,7 @@ rather than only asserted.
 ## Testing
 
 ```bash
-pytest            # 153 tests: unit + property + end-to-end CLI runs
+pytest            # 155 tests: unit + property + end-to-end CLI runs
 ruff check .      # lint
 ```
 

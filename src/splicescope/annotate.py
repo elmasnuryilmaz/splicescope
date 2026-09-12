@@ -136,8 +136,10 @@ def _check_annotation(observed: pd.DataFrame, known: pd.DataFrame) -> None:
         )
     if "chrom" not in observed.columns or observed.empty:
         return
-    seen = {str(c) for c in observed["chrom"].dropna()}
-    annotated = {str(c) for c in known["chrom"].dropna()}
+    # `unique()` first: there are a couple of dozen distinct chromosomes and a million
+    # rows, and walking the rows in Python costs a fifth of the whole annotation step.
+    seen = {str(c) for c in observed["chrom"].dropna().unique()}
+    annotated = {str(c) for c in known["chrom"].dropna().unique()}
     if seen & annotated:
         return
 

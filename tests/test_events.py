@@ -437,3 +437,114 @@ def test_a_dense_tandem_array_keeps_every_real_exon():
         seen = {(r.exonA_start, r.exonA_end) for r in events.itertuples(index=False)}
         seen |= {(r.exonB_start, r.exonB_end) for r in events.itertuples(index=False)}
         assert expected <= seen, f"{n}-exon array lost {len(expected - seen)} real exons"
+
+
+def _annotation_scale_dataset(n_genes=400, n_exons=10, n_samples=3):
+    """Many genes sharing splice sites, the way a real annotation does.
+
+    Every junction is present in every sample, so nothing is lost to sampling and the
+    expected event set is exact. Each gene gets ten 150 nt exons 2 300 nt apart, and
+    depending on its index an alternative donor, a skipped exon, a cryptic acceptor, or
+    several of those. The gene index also sets the strand, so each event class appears
+    on both — which matters, because donor and acceptor swap roles between them.
+    """
+    chroms = [f"chr{c}" for c in list(range(1, 23)) + ["X", "Y"]]
+    rows, expected = [], {"SE": set(), "A5SS": set(), "A3SS": set()}
+    for g in range(n_genes):
+        chrom, strand = chroms[g % len(chroms)], "+" if g % 2 == 0 else "-"
+        base = 1_000 + (g // len(chroms)) * 60_000
+        starts = [base + k * 2_300 for k in range(n_exons)]
+        ends = [s + 149 for s in starts]
+        gid, gname = f"ENSG{g:011d}", f"GENE{g}"
+        for k in range(n_exons - 1):
+            rows.append((chrom, ends[k] + 1, starts[k + 1] - 1, strand, gid, gname, True))
+        if g % 5 == 0:  # an alternative donor 27 nt in, sharing intron 2's other end
+            rows.append((chrom, ends[2] - 26, starts[3] - 1, strand, gid, gname, True))
+            expected["A5SS" if strand == "+" else "A3SS"].add((chrom, strand, starts[3] - 1))
+        if g % 3 == 0:  # exon 4 skipped
+            rows.append((chrom, ends[3] + 1, starts[5] - 1, strand, gid, gname, True))
+            expected["SE"].add((chrom, strand, ends[3] + 1, starts[5] - 1))
+        if g % 4 == 0:  # a cryptic acceptor inside intron 6, on the annotated donor
+            rows.append((chrom, ends[6] + 1, ends[6] + 900, strand, gid, gname, False))
+            expected["A3SS" if strand == "+" else "A5SS"].add((chrom, strand, ends[6] + 1))
+
+    cols = ["chrom", "start", "end", "strand", "gene_id", "gene_name", "in_annotation"]
+    pool = pd.DataFrame(rows, columns=cols)
+    known = pool[pool["in_annotation"]].drop(columns="in_annotation").reset_index(drop=True)
+    rng = np.random.default_rng(0)
+    observed = pd.concat(
+        [
+            pool[["chrom", "start", "end", "strand"]].assign(
+                sample=f"S{s}", count=rng.integers(20, 80, len(pool))
+            )
+            for s in range(n_samples)
+        ],
+        ignore_index=True,
+    )
+    return observed, known, expected
+
+
+def test_every_event_in_an_annotation_sized_dataset_is_recovered_and_nothing_else_is():
+    """Counts can hide a detector that drops one event and invents another, so this
+    compares the event *identities* against the ones injected — across 400 genes on
+    both strands, sharing donors and acceptors the way real genes do.
+
+    A skipping junction is genuinely an alternative 3' site relative to its own
+    inclusion junction, so it is excluded from alt-site detection once its cassette is
+    called. That exclusion is what keeps these three sets disjoint, and it is the part
+    an exact comparison pins down.
+    """
+    observed, known, expected = _annotation_scale_dataset()
+    events = detect_events(annotate_junctions(observed, known))
+
+    se = events[events["event_type"] == "SE"]
+    got_se = set(zip(se["chrom"], se["strand"], se["skip_start"], se["skip_end"], strict=True))
+    assert got_se == expected["SE"], (
+        f"{len(expected['SE'] - got_se)} skipped exons missed, "
+        f"{len(got_se - expected['SE'])} invented"
+    )
+
+    for kind in ("A5SS", "A3SS"):
+        sub = events[events["event_type"] == kind]
+        got = set(zip(sub["chrom"], sub["strand"], sub["site_pos"], strict=True))
+        assert got == expected[kind], (
+            f"{kind}: {len(expected[kind] - got)} missed, {len(got - expected[kind])} invented"
+        )
+
+    # the cassette must name the exon that was actually skipped, not merely some exon
+    exon = se.set_index(["chrom", "strand", "skip_start"])[["exon_start", "exon_end"]]
+    chrom, strand, skip_start, _ = sorted(expected["SE"])[0]
+    row = exon.loc[(chrom, strand, skip_start)]
+    assert row["exon_end"] - row["exon_start"] == 149
+
+
+def test_junctions_on_different_chromosomes_are_never_combined_into_one_event():
+    """Coordinates repeat across chromosomes — every chromosome has a position 8 050 —
+    so a grouping key that forgets the chromosome pools junctions from genes that have
+    nothing to do with each other and assembles events out of the pieces.
+
+    Each half below is deliberately incomplete: chr1 has a skipping junction and its
+    upstream inclusion junction, chr2 only the downstream one, and neither pair of
+    anchors holds both ends of a mutually exclusive exon. No event exists on either
+    chromosome, and the only way to report one is to merge them.
+    """
+    obs = pd.DataFrame(
+        [
+            # a cassette missing its downstream inclusion junction, which sits on chr2
+            ("chr1", 100, 300, "+", 40),
+            ("chr1", 100, 199, "+", 40),
+            ("chr2", 250, 300, "+", 40),
+            # two MXE donors on chr1, the matching acceptors on chr2
+            ("chr1", 2000, 2100, "+", 40),
+            ("chr1", 2000, 2200, "+", 40),
+            ("chr2", 2150, 9000, "+", 40),
+            ("chr2", 2250, 9000, "+", 40),
+        ],
+        columns=["chrom", "start", "end", "strand", "count"],
+    )
+    obs["sample"] = "s1"
+
+    cassettes = detect_cassette_events(obs)
+    assert cassettes.empty, f"invented {len(cassettes)} cassette(s) across chromosomes"
+    mxe = detect_mxe_events(obs)
+    assert mxe.empty, f"invented {len(mxe)} MXE event(s) across chromosomes"

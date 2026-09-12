@@ -27,6 +27,20 @@ All notable changes to this project are documented here. The format is based on
   only in floating-point noise. The smaller side is always the one summed outright, so
   the subtraction never has to recover a small number from two near-equal ones.
 
+### Added
+- **Two tests for things the event suite could not see.** Every hand-built event test
+  uses one chromosome, so a grouping key that forgot the chromosome would pool junctions
+  from unrelated genes and assemble events out of the pieces — and nothing in the suite
+  failed when that key was removed, from either the cassette or the MXE detector.
+  Coordinates repeat across chromosomes, so this is not a hypothetical. There is now a
+  test whose two halves are each deliberately incomplete and can only produce an event
+  if they are merged. A second test injects events into 400 genes on both strands that
+  share donors and acceptors the way real genes do, and compares the detected event
+  *identities* against the injected ones — 200 skipped exons, 60 alternative 5' sites and
+  210 alternative 3' sites, with nothing missed and nothing invented. Mutation-checked:
+  dropping the chromosome from any of the three grouping keys now fails a test, where
+  before it failed none.
+
 ### Fixed
 - **A gene set with a member outside the background no longer raises `KeyError`.** Only
   genes that were tested can be drawn, so such a member is simply not in the set for the

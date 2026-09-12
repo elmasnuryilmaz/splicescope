@@ -609,3 +609,36 @@ def test_junctions_on_different_chromosomes_are_never_combined_into_one_event():
     assert cassettes.empty, f"invented {len(cassettes)} cassette(s) across chromosomes"
     mxe = detect_mxe_events(obs)
     assert mxe.empty, f"invented {len(mxe)} MXE event(s) across chromosomes"
+
+
+def test_the_event_level_test_uses_the_counts_and_not_the_ranks():
+    """`differential_splicing(value="psi")` finds its count columns by name, and the
+    names it looks for are the ones `event_psi` happens to use. Nothing checked that
+    they still match, and the failure is silent: with the counts missing the test falls
+    back to Mann-Whitney, which at three replicates per group cannot clear correction at
+    all. Measured on the simulator: 32 of 44 events called with the counts, 0 without.
+    """
+    from splicescope.diff import differential_splicing
+    from splicescope.simulate import simulate_dataset
+
+    ds = simulate_dataset(n_genes=24, n_per_group=3, cryptic_fraction=0.8, seed=11)
+    annotated = annotate_junctions(ds.observed, ds.known)
+    psi = event_psi(annotated, detect_events(annotated), min_reads=5)
+    assert {"inc_reads", "total_reads"} <= set(psi.columns), (
+        "the column names differential_splicing resolves for value='psi'"
+    )
+
+    counted = differential_splicing(psi, ds.groups, value="psi", key=["event_id"])
+    assert "lrt_statistic" in counted.columns, "the beta-binomial, not the rank test"
+    assert (counted["qvalue"] <= 0.05).sum() > 10, "and it calls a good number of them"
+
+    # the same data with the counts hidden, which is what a rename would do
+    ranked = differential_splicing(
+        psi.drop(columns=["inc_reads", "total_reads"]),
+        ds.groups, value="psi", key=["event_id"],
+    )
+    assert "lrt_statistic" not in ranked.columns
+    assert (ranked["qvalue"] <= 0.05).sum() == 0, (
+        "3 vs 3 on ranks alone clears nothing — which is why the fallback must not be "
+        "reachable by accident"
+    )

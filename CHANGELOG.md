@@ -55,6 +55,15 @@ All notable changes to this project are documented here. The format is based on
   what the previous code produced.
 
 ### Added
+- **A test that the event-level comparison uses the read counts.**
+  `differential_splicing(value="psi")` resolves its count columns by name, and the names
+  it looks for are the ones `event_psi` happens to produce. Nothing checked that they
+  still match, and the failure is silent: with the counts unreachable the test falls back
+  to Mann-Whitney. At six replicates a side that is nearly invisible — 21 events called
+  instead of 22 — but the q-values collapse by twenty-three orders of magnitude, and at
+  the three-a-side design METHODS §5.1 is about, it is the difference between **32 of 44
+  events called and none at all**.
+
 - **A `py.typed` marker, so the annotations are usable.** Sixty of the sixty-five
   public functions carried type hints and none of them was visible to anyone installing
   this: under PEP 561 a type checker ignores a package's inline annotations unless the

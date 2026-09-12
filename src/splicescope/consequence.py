@@ -685,6 +685,7 @@ def annotate_junction_consequences(
     interpreted against its host gene's annotation, and where several
     transcripts interpret it differently the most disruptive reading is kept.
     """
+    check_genome(events, transcripts, genome, chrom_col=chrom_col, end_col=end_col)
     by_gene = index_by_gene(transcripts) if gene_col in events.columns else None
     columns = [chrom_col, start_col, end_col, strand_col]
     if by_gene is not None:
@@ -728,6 +729,74 @@ def annotate_junction_consequences(
     return pd.concat([events.reset_index(drop=True), pd.DataFrame(rows)], axis=1)
 
 
+def check_genome(
+    events: pd.DataFrame,
+    transcripts: dict[str, Transcript],
+    genome: GenomeFasta,
+    chrom_col: str = "chrom",
+    end_col: str = "end",
+) -> None:
+    """Refuse a genome the events cannot be read against.
+
+    Reading past the end of a contig returns a truncated string rather than an error, so
+    the wrong assembly does not fail — it finds no stop codon anywhere and calls
+    everything a frameshift. Measured on the simulator, swapping in a genome 200 bases
+    long turned six ``ptc_nmd`` calls into zero and reported nine events as confidently
+    as before.
+
+    The ``.fai`` already carries every contig's name and length, so both halves of the
+    mistake are cheap to see: a chromosome the FASTA does not have, and a coordinate past
+    the end of one it does.
+
+    Only the chromosomes where a prediction will actually be made are checked — those
+    with both an event and a transcript to host it. An event on a contig the annotation
+    says nothing about already has an honest answer (``no_host_transcript``), and a
+    genome covering more than the analysis needs is nobody's mistake.
+    """
+    if events.empty or chrom_col not in events.columns:
+        return
+    hosted = {tx.chrom for tx in transcripts.values()}
+    furthest: dict[str, int] = {}
+    for chrom, end in zip(events[chrom_col], events[end_col], strict=True):
+        if chrom != chrom or end != end or str(chrom) not in hosted:  # NaN, or no host
+            continue
+        furthest[str(chrom)] = max(furthest.get(str(chrom), 0), int(end))
+
+    missing = sorted(c for c in furthest if c not in genome.index)
+    if missing:
+        present = sorted(genome.index)
+
+        def bare(names):
+            return {n[3:] if n.lower().startswith("chr") else n for n in names}
+
+        hint = ""
+        if bare(missing) & bare(present):
+            hint = (
+                "\n  The same chromosomes are named differently: GENCODE writes 'chr1' "
+                "where Ensembl writes '1'."
+            )
+        raise ValueError(
+            f"the genome has no {'contigs' if len(missing) > 1 else 'contig'} "
+            f"{missing[:6]}, so nothing can be read for events on "
+            f"{'them' if len(missing) > 1 else 'it'}.\n"
+            f"  in the genome: {present[:6]}{hint}"
+        )
+
+    beyond = [
+        (chrom, end, genome.index[chrom][0])
+        for chrom, end in furthest.items()
+        if end > genome.index[chrom][0]
+    ]
+    if beyond:
+        chrom, end, length = beyond[0]
+        raise ValueError(
+            f"the annotation reaches {chrom}:{end} but the genome's {chrom} is only "
+            f"{length} bases long, so the sequence downstream of an event would be read "
+            "as empty and every prediction would come back a frameshift. The genome and "
+            "the annotation are not the same assembly."
+        )
+
+
 def annotate_consequences(
     events: pd.DataFrame,
     transcripts: dict[str, Transcript],
@@ -748,6 +817,7 @@ def annotate_consequences(
     transcript search to that gene. Without it every transcript is scanned for
     every event, which is quadratic and impractical at genome scale.
     """
+    check_genome(events, transcripts, genome, chrom_col=chrom_col, end_col=end_col)
     priority = _PRIORITY
     by_gene = index_by_gene(transcripts) if gene_col in events.columns else None
     columns = [chrom_col, start_col, end_col, strand_col]

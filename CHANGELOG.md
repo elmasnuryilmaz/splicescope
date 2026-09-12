@@ -301,6 +301,18 @@ All notable changes to this project are documented here. The format is based on
   before it failed none.
 
 ### Fixed
+- **A genome from another assembly is refused rather than read off the end of a contig.**
+  `GenomeFasta.fetch` clamps to the contig's length and returns a truncated string, not
+  an error, so the wrong genome does not fail — it finds no stop codon anywhere and calls
+  everything a frameshift. Measured: swapping the simulator's genome for one 200 bases
+  long turned **six `ptc_nmd` calls into zero** and reported the same nine events as
+  confidently as before. The `.fai` already carries every contig's name and length, so
+  both halves of the mistake are cheap to see, and `check_genome` now refuses a
+  chromosome the FASTA does not have and a coordinate past the end of one it does. It
+  covers only the chromosomes where a prediction will actually be made — those with both
+  an event and a transcript to host it — so an event on an unannotated contig keeps its
+  honest `no_host_transcript` answer and a genome larger than the analysis is nobody's
+  mistake.
 - **An annotation nothing can match is refused instead of reporting a genome of novel
   splicing.** Every junction class but `cryptic` is defined by agreeing with the
   annotation, so an annotation that matches nothing does not fail — it calls everything

@@ -651,3 +651,51 @@ def test_an_in_frame_change_says_whether_the_protein_gains_or_loses_residues():
     )
     assert "Removing these 42 nucleotides" in removed
     assert "loses 14 amino acids" in removed and "gains" not in removed
+
+
+def _tiny_genome(tmp_path, name: str, length: int):
+    """A FASTA whose index says exactly `length`, so the check has something to read."""
+    fasta = tmp_path / f"{name}.fa"
+    fasta.write_text(f">{name}\n" + "ACGT" * (length // 4) + "\n")
+    index = f"{name}\t{length}\t{len(name) + 2}\t{length}\t{length + 1}\n"
+    fasta.with_suffix(".fa.fai").write_text(index)
+    return fasta
+
+
+def test_a_genome_from_another_assembly_is_refused_rather_than_read_off_the_end(tmp_path):
+    """Reading past the end of a contig returns a truncated string, not an error, so a
+    mismatched genome does not fail — it finds no stop codon anywhere and calls
+    everything a frameshift. On the simulator that turned six `ptc_nmd` calls into zero
+    while reporting the same nine events as confidently as before."""
+    events = pd.DataFrame([("chr1", 250, 300, "+")], columns=["chrom", "start", "end", "strand"])
+    with GenomeFasta(_tiny_genome(tmp_path, "chr1", 200)) as fa:
+        with pytest.raises(ValueError, match="only 200 bases long"):
+            annotate_consequences(events, {"T1": make_transcript()}, fa)
+
+
+def test_a_genome_named_the_other_way_round_says_which_convention(tmp_path):
+    """GENCODE writes `chr1`, Ensembl writes `1`, and the genome has to match the GTF."""
+    events = pd.DataFrame([("chr1", 250, 300, "+")], columns=["chrom", "start", "end", "strand"])
+    with GenomeFasta(_tiny_genome(tmp_path, "1", 4000)) as fa:
+        with pytest.raises(ValueError, match="has no contig"):
+            annotate_consequences(events, {"T1": make_transcript()}, fa)
+    with GenomeFasta(_tiny_genome(tmp_path, "1", 4000)) as fa:
+        try:
+            annotate_consequences(events, {"T1": make_transcript()}, fa)
+        except ValueError as exc:
+            assert "GENCODE writes 'chr1' where Ensembl writes '1'" in str(exc)
+
+
+def test_a_contig_the_annotation_does_not_use_is_not_the_genome_s_problem(tmp_path):
+    """The check covers only the chromosomes where a prediction will actually be made —
+    those with both an event and a transcript to host it. An event on a contig the
+    annotation says nothing about already has an honest answer, and a genome that covers
+    more than the analysis needs is nobody's mistake."""
+    events = pd.DataFrame(
+        [("chr1", 250, 300, "+"), ("chr9", 250, 300, "+")],
+        columns=["chrom", "start", "end", "strand"],
+    )
+    with GenomeFasta(write_fasta(tmp_path, {"chr1": "A" * 1000})) as fa:
+        out = annotate_consequences(events, {"T1": make_transcript()}, fa)
+    assert len(out) == 2
+    assert out.loc[1, "consequence_class"] == NO_HOST

@@ -374,7 +374,9 @@ def _consequence_table(events, gtf: str, genome: str, mode: str = "exon"):
     try:
         with GenomeFasta(genome) as fasta:
             return annotate(table, transcripts, fasta, start_col=start_col, end_col=end_col)
-    except FileNotFoundError as exc:
+    except (FileNotFoundError, ValueError) as exc:
+        # ValueError is `check_genome` refusing a genome the annotation cannot be read
+        # against; its message is written for a reader, and a traceback would bury it
         print(f"error: {exc}", file=sys.stderr)
         return None
 

@@ -201,6 +201,58 @@ def _ranksum_test(
     return pd.DataFrame.from_records(records)
 
 
+def _check_inputs(
+    psi_df: pd.DataFrame, groups: dict[str, str], value: str, key: list[str]
+) -> None:
+    """Refuse the inputs that would otherwise produce a clean run and no result.
+
+    The dangerous one is the last: if no sample in the table is named in ``groups``,
+    every row is unassigned, every unit fails ``min_samples``, and the function returns
+    an empty table. Nothing raises, the caller reports "0 significant junctions" and
+    believes it. For a tool whose job is to find differential splicing that is the worst
+    outcome available, so it is an error here rather than a silence. The CLI catches the
+    same mistake from the filenames; this catches it for everyone using the library.
+
+    The others only replace a ``KeyError`` raised somewhere inside pandas with a
+    sentence naming the column and what was available instead.
+    """
+    if "sample" not in psi_df.columns:
+        raise ValueError(
+            "the Psi table has no 'sample' column, so no row can be assigned to a "
+            "condition. Pass the long table from compute_psi or event_psi, not a matrix."
+        )
+    if value not in psi_df.columns:
+        candidates = [c for c in psi_df.columns if str(c).startswith("psi")]
+        hint = f"; did you mean one of {candidates}?" if candidates else ""
+        raise ValueError(f"no column {value!r} in the Psi table{hint}")
+    absent = [c for c in key if c not in psi_df.columns]
+    if absent:
+        raise ValueError(
+            f"the grouping key names {absent}, which the Psi table does not have. "
+            f"Its columns are {list(psi_df.columns)}."
+        )
+
+    named = set(groups)
+    present = set(psi_df["sample"].dropna().unique())
+    if not named & present:
+        raise ValueError(
+            "no sample in the Psi table is named in `groups`, so every row would be "
+            "unassigned and this would return an empty table instead of failing.\n"
+            f"  in the table: {sorted(map(str, present))[:8]}\n"
+            f"  in `groups`:  {sorted(map(str, named))[:8]}"
+        )
+    for missing, where in (
+        (sorted(map(str, present - named)), "in the Psi table but not in `groups`"),
+        (sorted(map(str, named - present)), "in `groups` but not in the Psi table"),
+    ):
+        if missing:
+            shown = ", ".join(missing[:6]) + (" ..." if len(missing) > 6 else "")
+            warnings.warn(
+                f"{len(missing)} sample(s) {where} and will be ignored: {shown}",
+                stacklevel=3,
+            )
+
+
 def differential_splicing(
     psi_df: pd.DataFrame,
     groups: dict[str, str],
@@ -247,10 +299,11 @@ def differential_splicing(
         raise ValueError(f"unknown test: {test!r}")
     if dispersion not in ("shared", "per_unit_floor"):
         raise ValueError(f"unknown dispersion: {dispersion!r}")
+    key = key or ["chrom", "start", "end", "strand"]
+    _check_inputs(psi_df, groups, value, key)
 
     df = psi_df.copy()
     df["condition"] = df["sample"].map(groups)
-    key = key or ["chrom", "start", "end", "strand"]
     extra = [
         c
         for c in ("gene_id", "gene_name", "sclass", "event_type")

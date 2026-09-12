@@ -41,6 +41,16 @@ All notable changes to this project are documented here. The format is based on
   dropping the chromosome from any of the three grouping keys now fails a test, where
   before it failed none.
 
+- **`differential_splicing` refuses a sample/group mismatch instead of returning
+  nothing.** If no sample in the Psi table is named in `groups`, every row is
+  unassigned, every unit fails `min_samples`, and an empty table comes back: the caller
+  reports "0 significant junctions" and believes it. The CLI has refused this since
+  0.8.1, but only by comparing filenames, so everyone using the library got the silence.
+  It is now a `ValueError` naming both lists. A partial mismatch warns and continues,
+  since that is usually a real experiment with a sample dropped. A misspelled `value`
+  column, a `key` column the table lacks, and a Psi table with no `sample` column now
+  say so too, instead of surfacing as a `KeyError` from inside pandas.
+
 ### Fixed
 - **A gene set with a member outside the background no longer raises `KeyError`.** Only
   genes that were tested can be drawn, so such a member is simply not in the set for the

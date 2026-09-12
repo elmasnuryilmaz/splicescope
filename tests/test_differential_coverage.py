@@ -140,3 +140,59 @@ def test_junction_and_event_levels_agree_about_an_absent_junction():
     tested = psi[psi["sample"] == "C1"]
     assert set(tested["end"]) == {1500, 2000}
     assert tested.loc[tested["end"] == 1500, "psi_donor"].iloc[0] == 0.0
+
+
+def _small_psi():
+    rows = [
+        _junction(100, 199, s, c)
+        for s, c in zip(SAMPLES, [50, 48, 52, 20, 22, 18], strict=True)
+    ] + [
+        _junction(100, 299, s, c)
+        for s, c in zip(SAMPLES, [10, 12, 8, 40, 38, 42], strict=True)
+    ]
+    return compute_psi(pd.DataFrame(rows))
+
+
+def test_groups_that_name_no_sample_in_the_table_is_an_error_not_an_empty_result():
+    """The worst outcome this tool can produce is a clean run and a wrong conclusion.
+    With none of the sample names matching, every row is unassigned, every unit fails
+    min_samples, and an empty table comes back — so the caller reports "0 significant
+    junctions" and believes it. The CLI already refused this from the filenames; the
+    library returned the empty table."""
+    import pytest
+
+    psi = _small_psi()
+    renamed = {f"other_{s}": g for s, g in GROUPS.items()}
+    with pytest.raises(ValueError, match="no sample in the Psi table is named"):
+        differential_splicing(psi, renamed)
+
+
+def test_a_partial_sample_mismatch_warns_and_keeps_going():
+    """Half a mismatch is usually a real experiment with one sample dropped, so it must
+    not be fatal — but it must not be silent either."""
+    import warnings
+
+    psi = _small_psi()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        out = differential_splicing(psi, {**GROUPS, "K4": "kd"})
+    assert not out.empty
+    assert any("K4" in str(w.message) for w in caught)
+
+
+def test_a_misspelled_value_column_says_which_ones_exist():
+    import pytest
+
+    psi = _small_psi()
+    with pytest.raises(ValueError, match=r"psi_donor"):
+        differential_splicing(psi, GROUPS, value="psi")
+
+
+def test_a_grouping_key_the_table_does_not_have_is_named_in_the_error():
+    """Event-level tests are run by passing key=["event_id"]; handing that to a
+    junction-level table used to fail as a KeyError from inside pandas."""
+    import pytest
+
+    psi = _small_psi()
+    with pytest.raises(ValueError, match=r"event_id"):
+        differential_splicing(psi, GROUPS, key=["event_id"])

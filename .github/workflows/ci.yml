@@ -45,3 +45,56 @@ jobs:
           # the consequence layer must run on the built-in data, with no downloads
           test -f results/consequence.tsv
           test -f results/junction_consequence.tsv
+
+  nextflow:
+    # The pipeline's real-data branch was broken from the day it was written until
+    # 0.9.0, because nothing ever ran it. Both branches are exercised here.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - uses: nf-core/setup-nextflow@v2
+
+      - name: Demo mode
+        run: |
+          nextflow run nextflow/main.nf -profile test
+          test -f results/out/differential_splicing.tsv
+          # the simulator writes a genome, so demo mode reaches the consequence layer
+          test -f results/out/consequence.tsv
+          test -f results/out/junction_consequence.tsv
+
+      - name: Real-data mode, with the inputs staged apart as a real dataset has them
+        run: |
+          splicescope simulate --outdir staging --genes 8
+          mkdir -p inputs
+          mv staging/sj inputs/star_junctions
+          mv staging/annotation.gtf inputs/gencode.gtf
+          mv staging/groups.tsv inputs/design.tsv
+          mv staging/genome.fa inputs/GRCh38.fa
+          mv staging/genome.fa.fai inputs/GRCh38.fa.fai
+          nextflow run nextflow/main.nf --outdir real_results \
+            --sj_dir "$PWD/inputs/star_junctions" \
+            --gtf "$PWD/inputs/gencode.gtf" \
+            --groups "$PWD/inputs/design.tsv" \
+            --genome "$PWD/inputs/GRCh38.fa"
+          test -f real_results/out/differential_splicing.tsv
+          test -f real_results/out/junction_consequence.tsv
+
+      - name: Real-data mode without a genome skips the consequence layer
+        run: |
+          nextflow run nextflow/main.nf --outdir bare_results \
+            --sj_dir "$PWD/inputs/star_junctions" \
+            --gtf "$PWD/inputs/gencode.gtf" \
+            --groups "$PWD/inputs/design.tsv"
+          test -f bare_results/out/events.tsv
+          test ! -f bare_results/out/consequence.tsv

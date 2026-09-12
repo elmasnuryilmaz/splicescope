@@ -22,8 +22,8 @@ identifiers:
   - type: doi
     value: "10.5281/zenodo.22287003"
     description: "DOI for version v0.8.1"
-version: "0.9.0"
-date-released: "2026-09-11"
+version: "0.9.1"
+date-released: "2026-09-12"
 license: MIT
 repository-code: "https://github.com/elmasnuryilmaz/splicescope"
 url: "https://elmasnuryilmaz.github.io"

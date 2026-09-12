@@ -146,7 +146,8 @@ rather than only asserted.
 - **`nextflow/`** — a DSL2 pipeline that runs the same steps across many samples on a
   cluster or in containers. `nextflow run nextflow/main.nf -profile test` is the
   self-contained demo; real data goes in as
-  `--sj_dir … --gtf … --groups … [--genome …]`, each staged independently.
+  `--sj_dir … --gtf … --groups … [--genome …]`, each staged independently. CI runs all
+  three paths on every push.
 - **`app/streamlit_app.py`** — an interactive dashboard to browse junction classes,
   the volcano and ranked cryptic candidates (`pip install -e ".[app]"` then
   `streamlit run app/streamlit_app.py`). Deploy-ready for Streamlit Community Cloud —
@@ -155,7 +156,7 @@ rather than only asserted.
 ## Testing
 
 ```bash
-pytest            # 131 tests: unit + property + end-to-end CLI runs
+pytest            # 153 tests: unit + property + end-to-end CLI runs
 ruff check .      # lint
 ```
 

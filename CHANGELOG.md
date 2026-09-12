@@ -6,7 +6,18 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.9.1] — 2026-09-12
+
 ### Added
+- **The Nextflow pipeline is executed in CI, both branches.** Its real-data mode was broken
+  from the day it was written until 0.9.0 and nobody noticed, because nothing ever ran it;
+  the 0.9.0 fix itself shipped with a caveat that it had not been executed either. It has
+  now been run: demo mode, real-data mode with the inputs staged in three unrelated places
+  as a real dataset has them, and real-data mode without `--genome` (which must skip the
+  consequence layer and does). The pre-fix pipeline was run on the same inputs for
+  comparison and fails exactly as predicted — `--sj-dir star_junctions/sj --gtf
+  star_junctions/annotation.gtf`, then `error: no *.tab files`. A `nextflow` job in CI now
+  covers all three.
 - **Pathway ORA corrects the gene-opportunity bias.** The hypergeometric null treats every
   gene as one equally likely draw, but a gene contributes as many chances of being a hit as
   it has tested junctions, so long many-exon genes are over-represented among the hits for

@@ -16,6 +16,7 @@ from splicescope.consequence import (
     GenomeFasta,
     Transcript,
     annotate_consequences,
+    describe,
     find_ptc,
     host_transcripts,
     predict_consequence,
@@ -572,11 +573,15 @@ def test_every_consequence_class_is_explained_in_a_sentence():
         frameshift=True, ptc_offset=23, distance_to_last_junction=395,
         nmd_predicted=True,
     )
+    unnamed = describe({**base, "consequence_class": "a_class_added_later"})
     for name in CONSEQUENCE_CLASSES:
         sentence = describe({**base, "consequence_class": name})
         assert sentence and sentence[0].isupper() and sentence.endswith("."), name
         assert "consequence_class" not in sentence, f"{name}: it printed the column name"
         assert len(sentence.split()) > 8, f"{name}: too terse to explain anything"
+        # the fallback is twelve words, so a word count alone would not have caught a
+        # class added without a sentence of its own
+        assert sentence != unnamed, f"{name}: fell through to the catch-all"
 
 
 def test_the_fifty_nucleotide_rule_is_stated_in_words_both_ways():
@@ -699,3 +704,51 @@ def test_a_contig_the_annotation_does_not_use_is_not_the_genome_s_problem(tmp_pa
         out = annotate_consequences(events, {"T1": make_transcript()}, fa)
     assert len(out) == 2
     assert out.loc[1, "consequence_class"] == NO_HOST
+
+
+def test_a_shift_in_a_transcript_with_no_coding_sequence_says_so(tmp_path):
+    """A lncRNA host has no reading frame to disturb, so the honest answer is that the
+    question does not apply — not that the protein is unchanged."""
+    from splicescope.consequence import predict_junction_consequence
+
+    tx = make_transcript(cds=False)
+    with GenomeFasta(write_fasta(tmp_path, {"chr1": "A" * 1000})) as fa:
+        # intron 1 is 201-400; ending at 420 trims 20 nt off the downstream exon
+        call = predict_junction_consequence(tx, fa, "chr1", 201, 420)
+    assert call.consequence_class == NON_CODING_HOST
+    assert call.insert_length == -20
+    assert "no annotated coding sequence" in describe(call)
+
+
+def test_a_shift_outside_the_coding_sequence_leaves_the_protein_alone(tmp_path):
+    """Untranslated regions are transcribed and spliced like anything else, and a
+    cryptic site in one changes the transcript without changing the protein."""
+    from splicescope.consequence import predict_junction_consequence
+
+    tx = Transcript(
+        transcript_id="T1", gene_id="G1", gene_name="GENE1", chrom="chr1", strand="+",
+        exons=[(101, 200), (401, 500), (701, 800)],
+        cds=[(401, 500)],  # the last exon is 3' UTR
+    )
+    with GenomeFasta(write_fasta(tmp_path, {"chr1": "A" * 1000})) as fa:
+        # intron 2 is 501-700; ending at 720 trims the start of the untranslated exon
+        call = predict_junction_consequence(tx, fa, "chr1", 501, 720)
+    assert call.consequence_class == UTR_INSERTION
+    assert call.ptc_offset is None
+    assert "untranslated region" in describe(call)
+
+
+def test_a_frameshift_with_no_stop_before_the_protein_s_own_end(tmp_path):
+    """Shifting the frame does not guarantee a premature stop. Read in the new frame the
+    remaining sequence may simply run to where the protein already ended, and then there
+    is nothing for decay to act on — the class is `frameshift`, not a PTC."""
+    from splicescope.consequence import predict_consequence
+
+    tx = make_transcript()
+    with GenomeFasta(write_fasta(tmp_path, {"chr1": "A" * 1000})) as fa:
+        # poly-A has no stop codon in any frame, so nothing downstream can terminate
+        call = predict_consequence(tx, fa, "chr1", 250, 299)
+    assert call.consequence_class == FRAMESHIFT
+    assert call.frameshift and call.insert_length % 3 != 0
+    assert call.ptc_offset is None and not call.nmd_predicted
+    assert "no stop codon appears" in describe(call)

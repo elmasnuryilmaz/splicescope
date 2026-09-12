@@ -160,7 +160,7 @@ rather than only asserted.
 ## Testing
 
 ```bash
-pytest            # 251 tests: unit + property + end-to-end CLI runs
+pytest            # 267 tests: unit + property-based + end-to-end CLI runs
 ruff check .      # lint
 pytest --cov=splicescope   # 97 % of statements; CI fails below 90 %
 ```
@@ -171,6 +171,13 @@ dashboard (see the badge above). A separate job installs the *oldest* dependency
 `pyproject.toml` claims to support — pinned in `constraints-oldest.txt` — because a matrix
 that always resolves to the newest of everything never checks that the declared floor is
 real. It is: the suite passes on pandas 1.5.0 with numpy 1.23.5, and on pandas 3.
+
+Fourteen of those are **property-based** (`hypothesis`): generators produce junction
+tables, annotations and DNA, and the invariants have to hold whatever comes out — Ψ
+exhausts its splice site, swapping the group labels flips ΔΨ and leaves the p-value
+alone, a locus on another chromosome changes nothing, no event names a coordinate that
+was never observed. One found a real defect on its first run, in the shape of an empty
+result.
 
 A green suite says the tests pass, not that they would fail if the code broke. So the
 code is deliberately broken 85 ways and the suite has to notice:

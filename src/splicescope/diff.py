@@ -83,8 +83,22 @@ def _wide(
     return table.reindex(columns=samples)
 
 
+def _empty_result(columns: list[str]) -> pd.DataFrame:
+    """A result with no rows but the schema a result has, in the order it has it.
+
+    Returning a bare ``pd.DataFrame()`` gave the empty case a different shape from every
+    other: selecting columns on it raised ``KeyError`` where the same code worked on a
+    result with rows, and writing it to TSV produced a file with no header line at all —
+    which is what the CLI did for a run that found nothing. The two tests order their
+    columns differently, so each passes its own.
+    """
+    return pd.DataFrame(columns=[*columns, "qvalue", "abs_delta_psi"])
+
+
 def _finalize(res: pd.DataFrame) -> pd.DataFrame:
     if res.empty:
+        if "qvalue" not in res.columns:
+            res = res.assign(qvalue=pd.Series(dtype=float), abs_delta_psi=pd.Series(dtype=float))
         return res
     res["qvalue"] = benjamini_hochberg(res["pvalue"].to_numpy())
     res["abs_delta_psi"] = res["delta_psi"].abs()
@@ -125,7 +139,10 @@ def _betabinom_test(
 
     keep = (n_a >= min_samples) & (n_b >= min_samples)
     if not keep.any():
-        return pd.DataFrame()
+        return _empty_result(
+            [*key, f"mean_{a_name}", f"mean_{b_name}", "delta_psi", "pvalue",
+             "lrt_statistic", "precision", "n_a", "n_b", *extra]
+        )
     k, n, valid = k[keep], n[keep], valid[keep]
 
     if not dispersion_is_estimable(n, valid, groups=[is_a, is_b]):
@@ -198,6 +215,11 @@ def _ranksum_test(
             }
         )
         records.append(rec)
+    if not records:
+        return _empty_result(
+            [*key, *extra, f"mean_{a_name}", f"mean_{b_name}", "delta_psi", "pvalue",
+             "n_a", "n_b"]
+        )
     return pd.DataFrame.from_records(records)
 
 

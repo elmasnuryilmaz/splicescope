@@ -314,3 +314,34 @@ def test_the_rank_test_carries_the_annotation_columns_through():
     out = differential_splicing(psi, _groups(psi), test="ranksum")
     assert {"gene_id", "sclass"} <= set(out.columns)
     assert out["gene_id"].nunique() == 2 and out["sclass"].eq("novel_donor").all()
+
+
+@pytest.mark.parametrize("test", ["betabinom", "ranksum"])
+def test_a_result_with_no_rows_still_has_the_columns_a_result_has(test):
+    """Found by a property test, which could not even index the empty frame it got back.
+
+    `differential_splicing` returned a bare `pd.DataFrame()` when no unit met
+    `min_samples`, so the empty case had a different shape from every other: selecting
+    columns raised KeyError where the same code worked on a result with rows, and
+    `to_csv` wrote a file with no header line at all — which is what the CLI produced for
+    a run that found nothing.
+    """
+    from splicescope.diff import differential_splicing, significant
+
+    psi = _counts_table(n_units=6)
+    if test == "ranksum":
+        psi = psi.drop(columns=["count", "donor_total"])
+    groups = _groups(psi)
+
+    populated = differential_splicing(psi, groups, test=test)
+    empty = differential_splicing(psi, groups, test=test, min_samples=99)
+
+    assert len(populated) == 6 and empty.empty
+    assert list(empty.columns) == list(populated.columns), "same schema, same order"
+    # the things a caller does next, which used to raise on this frame
+    assert empty[["chrom", "start", "delta_psi", "qvalue"]].empty
+    def header(frame):
+        return frame.to_csv(index=False).splitlines()[0]
+
+    assert header(empty) == header(populated)
+    assert significant(empty).empty

@@ -55,6 +55,21 @@ All notable changes to this project are documented here. The format is based on
   what the previous code produced.
 
 ### Added
+- **Fourteen property-based tests, and `hypothesis` in the `dev` extra.** The README
+  described the suite as "unit + property + end-to-end". Nineteen tests had
+  property-shaped names, but every one asserted an invariant on a hand-picked input —
+  there was no generator anywhere, so the claim described a style rather than a
+  technique. That technique sees what the others cannot: neither the mutation survey nor
+  coverage can produce an input a person would not have written. The invariants now
+  checked against generated junction tables, annotations and DNA include Ψ exhausting
+  its splice site, reverse-complement being an involution, `find_ptc` pointing only at a
+  real in-frame stop and never past an earlier one, BH commuting with permutation,
+  annotation not depending on row order, filling the omitted zeros not moving a junction
+  that was observed, swapping the group labels flipping ΔΨ while leaving the p-value
+  alone, a locus on another chromosome changing nothing, and no event naming a coordinate
+  that was never observed. Searched at 600 examples per property as a one-off; the
+  committed settings run 40, in about four seconds.
+
 - **`--labels`, which makes the classifier reachable from the command line.** The `run`
   command already had a supervised-classifier branch, guarded on a truth column — and
   nothing an aligner writes carries one, so `model_card.json` and `cryptic_scores.tsv`
@@ -240,6 +255,14 @@ All notable changes to this project are documented here. The format is based on
   before it failed none.
 
 ### Fixed
+- **A differential result with no rows had no columns.** Found by the first property test
+  to run, which could not index the frame it got back. `differential_splicing` returned a
+  bare `pd.DataFrame()` when no unit met `min_samples`, so the empty case had a different
+  shape from every other: selecting columns raised `KeyError` where the same code worked
+  on a result with rows, and `to_csv` wrote a file with no header line at all — which is
+  what the CLI produced for `differential_splicing.tsv` on a run that found nothing, and
+  what anything downstream would then try to read. Both tests now return their own full
+  schema, in their own column order, which differ from each other.
 - **A sample listed in `--groups` with no file warned three times.** The CLI names it,
   and then hands the mapping to `differential_splicing`, which warns about the same
   sample again on each of its two calls. The CLI now narrows the mapping to the samples

@@ -376,6 +376,15 @@ All notable changes to this project are documented here. The format is based on
   are listed with the reason, so adding one is deliberate. The constraints test is
   widened to accept a pin naming an optional extra, while still requiring one for every
   runtime dependency.
+- **Declaring a dependency is not installing it where the tests run.** The same push
+  found the other half: CI installed `.[dev]` while the suite imports `nbformat` from
+  `.[docs]`, to check that the committed tutorial is the one its builder produces. That
+  test failed on every Python in the matrix and passed on any machine that had ever
+  rebuilt the notebook. The workflows install `.[dev,docs]` now — the mutation survey
+  too, since it runs the whole suite once per mutation — and a test maps each import to
+  the extra that declares it and compares that against what the workflow installs. It
+  honours `pytest.importorskip`, which is how `tests/test_dashboard.py` correctly makes
+  the Streamlit extra optional.
 - **The dashboard asks whether a value is missing in a way that cannot raise.** `x == x`
   is a compact "is this not NaN" and it works right up until the column is nullable:
   `pd.NA == pd.NA` is `pd.NA`, whose truth value raises. The page used it on two values it

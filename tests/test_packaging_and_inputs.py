@@ -434,3 +434,87 @@ def test_everything_the_suite_imports_is_a_declared_dependency():
     assert not missing, "imported but declared nowhere in pyproject.toml:\n  " + "\n  ".join(
         f"{name} — {sorted(where)[:3]}" for name, where in sorted(missing.items())
     )
+
+
+def test_the_job_that_runs_the_suite_installs_what_the_suite_imports():
+    """The other half of the test above, and the half that was actually red.
+
+    Declaring a dependency is not the same as installing it where the tests run. CI
+    installed `.[dev]` while the suite imports `nbformat` from `.[docs]` — to check that
+    the committed tutorial is the one its builder produces — so that test failed on every
+    Python in the matrix and passed on any machine that had ever rebuilt the notebook.
+
+    This maps each import to the extra that declares it and compares that against what
+    the workflow installs, so an extra added to `pyproject.toml` without being added to
+    CI is caught here rather than on the next push.
+    """
+    import ast
+    import re
+    import sys
+
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # pragma: no cover - only on Python 3.10
+        import tomli as tomllib
+
+    from packaging.requirements import Requirement
+
+    IMPORT_NAMES = {"sklearn": "scikit-learn", "PIL": "pillow", "yaml": "pyyaml"}
+    IGNORE = {"splicescope", "tomli", "packaging", "pytest_cov"}
+    #: pillow arrives with matplotlib, so `docs` is not what puts it there.
+    TRANSITIVE = {"pillow": "matplotlib"}
+    #: `app/` is never imported by the suite — the page is executed through Streamlit's
+    #: own harness, in a module that skips itself when that extra is absent.
+    SEARCHED = ("src", "tests", "examples", "validation", "docs")
+
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
+    extra_of = {}
+    for name in (Requirement(s).name for s in project["dependencies"]):
+        extra_of[name.lower()] = None  # runtime: always installed
+    for extra, specs in project.get("optional-dependencies", {}).items():
+        for spec in specs:
+            extra_of.setdefault(Requirement(spec).name.lower(), extra)
+
+    stdlib = set(sys.stdlib_module_names)
+    needed: dict[str, str] = {}
+    for directory in SEARCHED:
+        for path in sorted((ROOT / directory).rglob("*.py")):
+            tree = ast.parse(path.read_text())
+            # a module that calls `pytest.importorskip` for something is asking to be
+            # skipped where it is missing, which is a declaration that it is optional
+            skipped = {
+                ast.literal_eval(call.args[0])
+                for call in ast.walk(tree)
+                if isinstance(call, ast.Call)
+                and isinstance(call.func, ast.Attribute)
+                and call.func.attr == "importorskip"
+                and call.args
+                and isinstance(call.args[0], ast.Constant)
+            }
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    names = [a.name.split(".")[0] for a in node.names]
+                elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                    names = [node.module.split(".")[0]]
+                else:
+                    continue
+                for name in names:
+                    if name in stdlib or name in IGNORE or name in skipped:
+                        continue
+                    dist = IMPORT_NAMES.get(name, name).lower()
+                    dist = TRANSITIVE.get(dist, dist)
+                    extra = extra_of.get(dist)
+                    if extra is not None:
+                        needed[extra] = f"{name} in {path.relative_to(ROOT)}"
+
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    step = workflow.index("- name: Test (pytest)")
+    installs = re.findall(r'pip install -e "\.\[([^\]]+)\]"', workflow[:step])
+    assert installs, "no editable install found before the step that runs the suite"
+    provided = {e.strip() for e in installs[-1].split(",")}
+
+    uncovered = {e: why for e, why in needed.items() if e not in provided}
+    assert not uncovered, (
+        f"CI installs {sorted(provided)} before running the suite, but it also imports "
+        + "; ".join(f"{why} (extra {extra!r})" for extra, why in sorted(uncovered.items()))
+    )

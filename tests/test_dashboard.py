@@ -135,3 +135,32 @@ def test_every_figure_the_page_draws_is_released():
     assert all(id(c) in inside for c in calls(tree, "st.pyplot")), (
         "a figure is rendered at module level, outside any function that closes it"
     )
+
+
+def test_the_page_tests_for_a_missing_value_in_a_way_that_cannot_raise():
+    """`x == x` is a compact way to ask "is this not NaN", and it works right up until
+    the column is nullable — `pd.NA == pd.NA` is `pd.NA`, whose truth value raises rather
+    than being False. The page used it on two values it takes from a merge, and a
+    `TypeError` there does not produce a missing line: it replaces the whole page with an
+    error box, because the analysis runs inside one `try`.
+
+    That is not hypothetical. Event coordinates became a nullable integer column on the
+    day this was written, and the same idiom in a property test raised immediately. The
+    check is structural, because the values happen to be floating point today and a test
+    that ran the page would pass either way.
+    """
+    import ast
+
+    tree = ast.parse(APP.read_text())
+    offenders = [
+        ast.unparse(node)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Compare)
+        and len(node.ops) == 1
+        and isinstance(node.ops[0], ast.Eq)
+        and ast.unparse(node.left) == ast.unparse(node.comparators[0])
+    ]
+    assert not offenders, (
+        "compare with pd.isna instead of a value against itself: " + "; ".join(offenders)
+    )
+    assert "pd.isna(" in APP.read_text(), "and it is asked somewhere"

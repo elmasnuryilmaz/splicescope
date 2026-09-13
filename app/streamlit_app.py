@@ -22,6 +22,7 @@ if _SRC.is_dir() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
 import matplotlib.pyplot as plt
+import pandas as pd
 import streamlit as st
 
 st.set_page_config(page_title="splicescope", page_icon="🧬", layout="wide")
@@ -174,13 +175,15 @@ try:
                 "reading frame": "shifted" if row.frameshift else "preserved",
                 "call": row.consequence_class,
             }
-            if row.get("delta_psi") == row.get("delta_psi"):
+            # pd.isna, not `x == x`: the latter raises rather than returning False on a
+            # nullable column, and this page is where a user would see it happen
+            if not pd.isna(row.get("delta_psi")):
                 numbers["ΔΨ"] = f"{row.delta_psi:+.3f}"
                 numbers["q-value"] = f"{row.qvalue:.2e}"
             st.table({"": list(numbers), " ": list(numbers.values())})
 
         # ------------------------------------------------ why count-based testing
-        if row.get("pvalue") == row.get("pvalue"):
+        if not pd.isna(row.get("pvalue")):
             floor = min_achievable_rank_pvalue(n_rep, n_rep)
             st.markdown("**Why the read counts, and not the ranks**")
             st.write(

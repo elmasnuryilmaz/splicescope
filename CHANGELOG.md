@@ -365,6 +365,15 @@ All notable changes to this project are documented here. The format is based on
   count-based runs move, by roughly a factor of two on the tutorial's data; the committed
   outputs are rebuilt.** Reproduce with `validation/invariant_units.py`; METHODS §5.5 and
   a test compare every figure.
+- **The dashboard asks whether a value is missing in a way that cannot raise.** `x == x`
+  is a compact "is this not NaN" and it works right up until the column is nullable:
+  `pd.NA == pd.NA` is `pd.NA`, whose truth value raises. The page used it on two values it
+  takes from a merge, and a `TypeError` there does not drop a line — it replaces the whole
+  page with an error box, because the analysis runs inside one `try`. Not hypothetical:
+  event coordinates became a nullable integer column in this same cycle, and the identical
+  idiom in a property test raised at once. A structural test now refuses the idiom,
+  because the values are floating point today and a test that ran the page would pass
+  either way.
 - **A mutation that had quietly stopped applying, and a check so the next one does not.**
   `describe` was fixed earlier in this cycle to handle a premature stop with no recorded
   distance, which rewrote the line one of the 111 mutations replaces. The mutation then

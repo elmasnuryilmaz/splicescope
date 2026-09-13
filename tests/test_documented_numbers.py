@@ -301,6 +301,7 @@ def test_the_readme_counts_what_the_repository_actually_contains():
         )
 
 
+@pytest.mark.unmutated_source
 def test_every_mutation_still_has_something_to_break():
     """A mutation whose target text has moved is a rule that has quietly stopped being
     checked, and nothing said so for a week.

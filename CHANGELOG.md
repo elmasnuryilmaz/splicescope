@@ -430,6 +430,13 @@ All notable changes to this project are documented here. The format is based on
   idiom in a property test raised at once. A structural test now refuses the idiom,
   because the values are floating point today and a test that ran the page would pass
   either way.
+- **The check added with it would have turned the whole survey green.** The new test
+  reads this package's source and asserts that every mutation still matches something —
+  which is false for the mutation being applied at that moment, so left in it failed on
+  every run and reported every mutation as caught, the three equivalent mutants included.
+  A survey that says everything is caught says nothing. Tests that read the source now
+  carry an `unmutated_source` marker and the survey deselects them, with the reason at the
+  call. Confirmed by re-running: the equivalent mutant is reported as surviving again.
 - **A mutation that had quietly stopped applying, and a check so the next one does not.**
   `describe` was fixed earlier in this cycle to handle a premature stop with no recorded
   distance, which rewrote the line one of the 111 mutations replaces. The mutation then

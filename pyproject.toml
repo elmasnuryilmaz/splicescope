@@ -78,3 +78,6 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+markers = [
+    "unmutated_source: reads the source of this package and assumes nobody has edited it. The mutation survey deselects these, because it edits the source on purpose and would otherwise see them fail on every mutation and call each one caught.",
+]

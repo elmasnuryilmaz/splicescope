@@ -410,7 +410,14 @@ def survey(mutations, quiet: bool) -> int:
             else:
                 path.write_text(source.replace(old, new))
                 done = subprocess.run(
-                    [sys.executable, "-m", "pytest", "-x", "-q", "tests"],
+                    # `unmutated_source` marks the tests that read this package's own
+                    # source and assume nobody edited it. One of them checks that every
+                    # mutation below still matches something — which is false for the
+                    # mutation being applied right now, so left in it would fail on every
+                    # run and report every mutation as caught, equivalent mutants
+                    # included. That would quietly turn this whole survey green.
+                    [sys.executable, "-m", "pytest", "-x", "-q",
+                     "-m", "not unmutated_source", "tests"],
                     cwd=ROOT, capture_output=True, text=True,
                 )
                 path.write_text(source)

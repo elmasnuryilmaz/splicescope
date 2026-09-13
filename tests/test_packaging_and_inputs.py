@@ -397,6 +397,7 @@ def test_everything_the_suite_imports_is_a_declared_dependency():
     #: Third-party names that need no declaration, and why.
     ALLOWED = {
         "splicescope": "this package",
+        "tomllib": "stdlib from 3.11; on 3.10 the import is guarded and falls back to tomli",
         "tomli": "stdlib tomllib from 3.11; pytest brings tomli on 3.10, guarded by try",
         "packaging": "a pip and setuptools dependency, present wherever this installs",
         "pytest_cov": "a pytest plugin, never imported",
@@ -460,7 +461,7 @@ def test_the_job_that_runs_the_suite_installs_what_the_suite_imports():
     from packaging.requirements import Requirement
 
     IMPORT_NAMES = {"sklearn": "scikit-learn", "PIL": "pillow", "yaml": "pyyaml"}
-    IGNORE = {"splicescope", "tomli", "packaging", "pytest_cov"}
+    IGNORE = {"splicescope", "tomli", "tomllib", "packaging", "pytest_cov"}
     #: pillow arrives with matplotlib, so `docs` is not what puts it there.
     TRANSITIVE = {"pillow": "matplotlib"}
     #: `app/` is never imported by the suite — the page is executed through Streamlit's
@@ -518,3 +519,14 @@ def test_the_job_that_runs_the_suite_installs_what_the_suite_imports():
         f"CI installs {sorted(provided)} before running the suite, but it also imports "
         + "; ".join(f"{why} (extra {extra!r})" for extra, why in sorted(uncovered.items()))
     )
+
+    # and what a person is told to install has to be at least what CI installs, or the
+    # first thing they see after following the README is a failure CI never shows them
+    for doc in ("README.md", "CONTRIBUTING.md"):
+        documented = re.findall(r'pip install -e "\.\[([^\]]+)\]"', (ROOT / doc).read_text())
+        assert documented, f"{doc} documents no editable install"
+        offered = {e.strip() for line in documented for e in line.split(",")}
+        assert needed.keys() <= offered, (
+            f"{doc} tells a reader to install {sorted(offered)}, which leaves out "
+            + ", ".join(sorted(needed.keys() - offered))
+        )

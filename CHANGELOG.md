@@ -384,7 +384,18 @@ All notable changes to this project are documented here. The format is based on
   too, since it runs the whole suite once per mutation — and a test maps each import to
   the extra that declares it and compares that against what the workflow installs. It
   honours `pytest.importorskip`, which is how `tests/test_dashboard.py` correctly makes
-  the Streamlit extra optional.
+  the Streamlit extra optional. The documented dev install is `.[dev,docs]` now, and the
+  same test requires the README and `CONTRIBUTING.md` to offer at least what CI installs
+  — otherwise the first thing a reader meets after following the install line is a
+  failure CI never shows them.
+- **Two of the new checks were themselves environment-dependent, and CI said so.** The
+  README's test count is what a *full* install collects; `tests/test_dashboard.py` skips
+  itself where the Streamlit extra is absent, and skipping happens at collection, so the
+  matrix job legitimately counted seven fewer and the check called it a stale README. It
+  now runs only on a complete install. And `tomllib` is stdlib from 3.11, so on 3.10 the
+  import sweep flagged the very fallback that exists for 3.10. Both were reproduced
+  locally, by running the suite with those modules hidden, rather than fixed by pushing
+  and looking.
 - **The dashboard asks whether a value is missing in a way that cannot raise.** `x == x`
   is a compact "is this not NaN" and it works right up until the column is nullable:
   `pd.NA == pd.NA` is `pd.NA`, whose truth value raises. The page used it on two values it

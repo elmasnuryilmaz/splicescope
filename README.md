@@ -61,7 +61,9 @@ are in [validation/README.md](validation/README.md).
 git clone https://github.com/elmasnuryilmaz/splicescope.git
 cd splicescope
 python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"          # add ",app" for the Streamlit dashboard
+pip install -e ".[dev,docs]"     # add ",app" for the Streamlit dashboard
+#  docs brings the notebook tools: the suite checks that the committed tutorial
+#  is the one its builder produces, which means importing the builder
 ```
 
 ## Quickstart

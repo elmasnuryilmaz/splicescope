@@ -284,7 +284,18 @@ def test_the_readme_counts_what_the_repository_actually_contains():
         f"test_properties.py holds {properties} tests"
     )
 
-    if conftest is not None and conftest.COLLECTED is not None:
+    # The collected total is what a *full* install collects. `tests/test_dashboard.py`
+    # skips itself where the Streamlit extra is absent, and skipping happens at
+    # collection, so a partial install legitimately counts fewer — CI's matrix job saw
+    # seven fewer and this test was wrong to call that a stale README.
+    def installed(name):
+        try:
+            return importlib.util.find_spec(name) is not None
+        except (ImportError, ValueError):  # pragma: no cover - a missing parent package
+            return False
+
+    complete = all(installed(name) for name in ("streamlit", "nbformat"))
+    if complete and conftest is not None and conftest.COLLECTED is not None:
         assert f"# {conftest.COLLECTED} tests:" in readme, (
             f"pytest collected {conftest.COLLECTED}"
         )

@@ -381,6 +381,13 @@ All notable changes to this project are documented here. The format is based on
   final exon, a codon straddling the junction before it, and no junction at all. The
   mutation that used to pin the exception became equivalent, which is how the overlap
   surfaced; it is replaced by two that pin the single rule on both paths.
+- **The README offered v0.8.1's DOI as this exact version.** `CITATION.cff` lists two
+  identifiers: a concept DOI that resolves to the latest release, and a version DOI whose
+  own description says it belongs to v0.8.1. The README offered the second as "this exact
+  version" while the first line of the same citation says v0.9.1, so anyone citing the
+  exact version would have cited code two releases old. Only a release mints a new version
+  DOI, so the fix is to say which version the existing one belongs to. A test now refuses
+  a DOI that `CITATION.cff` attributes elsewhere being offered as the current one.
 - **A stop codon spanning the splice junction was never examined.** A ribosome reads the
   mature mRNA straight through, so a codon can begin in the last one or two bases of a
   cryptic exon and finish in the next one. `predict_consequence` searched the exon and

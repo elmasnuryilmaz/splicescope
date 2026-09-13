@@ -48,6 +48,47 @@ def test_version_is_consistent_across_the_repository():
     )
 
 
+def test_the_readme_does_not_offer_an_older_release_as_this_version():
+    """A reader who wants to cite this exact version was sent to v0.8.1's DOI.
+
+    `CITATION.cff` lists two identifiers: a concept DOI that resolves to the latest
+    release, and a version DOI whose own description says it belongs to v0.8.1. The
+    README offered the second as "this exact version" while the first line of the same
+    citation says v0.9.1, so the two disagreed about what the reader would be citing.
+    Only a release mints a new version DOI, so the honest fix is to say which version the
+    existing one belongs to.
+
+    This checks the two files agree: a DOI that `CITATION.cff` attributes to some other
+    version must not be offered by the README as the current one.
+    """
+    import re
+
+    from splicescope import __version__ as version
+
+    citation = (ROOT / "CITATION.cff").read_text()
+    readme = (ROOT / "README.md").read_text()
+
+    #: DOI -> the version its description names, for the entries that name one.
+    attributed = {
+        doi: found.group(1)
+        for doi, description in re.findall(
+            r'value: "(10\.\d+/[^"]+)"\s*\n\s*description: "([^"]*)"', citation
+        )
+        if (found := re.search(r"v(\d+\.\d+\.\d+)", description))
+    }
+    assert attributed, "CITATION.cff names no version for any DOI"
+
+    for doi, belongs_to in attributed.items():
+        if belongs_to == version:
+            continue
+        for sentence in re.split(r"(?<=[.])\s", readme):
+            if doi in sentence and "exact version" in sentence:
+                assert belongs_to in sentence, (
+                    f"the README offers {doi} as this exact version, but CITATION.cff "
+                    f"says it belongs to v{belongs_to} and this is v{version}"
+                )
+
+
 def test_pyproject_reads_the_version_from_the_package():
     """A literal version in pyproject.toml is a second source of truth, and it drifted."""
     pyproject = (ROOT / "pyproject.toml").read_text()

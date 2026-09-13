@@ -862,3 +862,111 @@ def test_checking_a_genome_against_nothing_is_not_an_error(tmp_path):
         past_the_end = pd.DataFrame({"chrom": ["chr1"], "intron_end": [99_999]})
         with pytest.raises(ValueError, match="chr1"):
             check_genome(past_the_end, transcripts, fa, end_col="intron_end")
+
+
+def test_a_stop_codon_that_spans_the_splice_junction_is_found(tmp_path):
+    """The ribosome reads the mature mRNA straight through a splice junction, so a codon
+    can begin in the last one or two bases of a cryptic exon and finish in the next one.
+    The search looked at the exon and then at the downstream sequence separately, and the
+    downstream search starts at the frame the exon leaves behind — which is exactly past
+    that codon. Neither half examined it.
+
+    Here the cryptic exon ends `...CTG` and the next exon begins `ACC`, so the codon at
+    offset 59 is `TGA` and nothing else in the sequence is a stop. The tool used to
+    report no premature stop at all and call the event a plain frameshift; the verdict it
+    exists to give was inverted by one codon.
+    """
+    exons = [(101, 200), (401, 500), (701, 800)]
+    genome = list("C" * 1000)
+    genome[308], genome[309] = "T", "G"   # the cryptic exon's last two bases, 1-based 309-310
+    genome[400] = "A"                     # the next exon's first base, 1-based 401
+    tx = make_transcript("+", exons=exons)
+
+    with GenomeFasta(write_fasta(tmp_path, {"chr1": "".join(genome)})) as fa:
+        insert = fa.fetch("chr1", 250, 310, "+")
+        assert find_ptc(insert, tx.frame_at(250)) is None, "nothing stops inside the exon"
+        result = predict_consequence(tx, fa, "chr1", 250, 310)
+
+    assert result.consequence_class == PTC_NMD
+    assert result.ptc_offset == 59, "the codon spanning the junction, not a later one"
+    # what is left of the 61-nt exon after the stop, plus every downstream exon but the last
+    assert result.distance_to_last_junction == (61 - 59 - 3) + 100 == 99
+    assert result.nmd_predicted is True
+    assert "59 nucleotides in" in describe(result)
+
+
+def test_a_stop_past_the_last_junction_has_no_distance_to_it(tmp_path):
+    """`distance_to_last_junction` was written into `consequence.tsv` as a negative number
+    for about one in seventy simulated cassettes, and `describe` turned it into *"it sits
+    only -7 nucleotides before the last exon-exon junction, within the 50 the rule
+    allows"*. The verdict was right and the reason was not: the stop is not within 50
+    nucleotides of a junction, it is past the last one, so there is no junction downstream
+    for the rule to use — which is the sentence the last-exon branch already writes.
+    """
+    from splicescope.consequence import _nmd_from_downstream
+
+    # one downstream exon of 30 and a final one of 30: the last junction sits at 30
+    lengths = [30, 30]
+    # a stop at 21, inside the first of them, ends at 24 and so sits 6 before the junction
+    assert _nmd_from_downstream("C" * 21 + "TAA" + "C" * 36, lengths, 0, 0) == (21, 6, False)
+
+    # the same stop at 42 is in the *final* exon, past the junction at 30
+    offset, distance, nmd = _nmd_from_downstream("C" * 42 + "TAA" + "C" * 15, lengths, 0, 0)
+    assert offset == 42, "the stop is still reported"
+    assert distance is None, "its distance to a junction it lies downstream of is not"
+    assert nmd is False
+
+
+def test_an_in_frame_insert_can_still_carry_a_premature_stop(tmp_path):
+    """The case the junction-spanning codon inverts most completely, and it is not
+    contrived — it turned up once in 719 simulated cassette predictions.
+
+    An insert of a whole number of codons preserves the reading frame, but when the frame
+    entering it is not zero the codon grid inside it is offset, so its last codon runs
+    past the 3' end. Here nine nucleotides ending `...T` meet a next exon beginning `AA`,
+    and that codon is `TAA`. The tool used to say the protein *"simply gains 3 amino
+    acids"*; the transcript is in fact predicted to be degraded.
+    """
+    exons = [(101, 200), (401, 500), (701, 800)]
+    genome = list("C" * 1000)
+    genome[257] = "T"                      # 1-based 258, the insert's last base
+    genome[400] = genome[401] = "A"        # 1-based 401-402, the next exon's first two
+    tx = make_transcript("+", exons=exons)
+
+    with GenomeFasta(write_fasta(tmp_path, {"chr1": "".join(genome)})) as fa:
+        assert tx.frame_at(250) == 1, "the grid inside the insert is offset"
+        result = predict_consequence(tx, fa, "chr1", 250, 258)
+
+    assert result.frameshift is False, "nine nucleotides is a whole number of codons"
+    assert result.consequence_class == PTC_NMD
+    assert result.ptc_offset == 8 and result.distance_to_last_junction == 98
+    sentence = describe(result)
+    assert "premature stop" in sentence
+    assert "gains" not in sentence, "and it no longer says the protein simply grows"
+    assert ", and the first" not in sentence, "the conjunction has nothing to join here"
+
+
+def test_a_cassette_stop_that_straddles_the_last_junction_reports_no_distance(tmp_path):
+    """The other half of the negative-distance guard, on the cassette path.
+
+    With a single exon left after the cryptic one, the last exon-exon junction is the
+    cryptic exon's own 3' end — so a stop whose codon spans that junction ends past it.
+    The subtraction gives -2, which is not a distance to anything: nothing downstream of
+    the stop is a junction, so the rule has nothing to measure and decay is not predicted.
+    This case only became reachable when the scan started seeing the spanning codon at
+    all, which is why the guard is new and this test with it.
+    """
+    exons = [(101, 200), (401, 500)]      # one exon left after the insert
+    genome = list("C" * 1000)
+    genome[257] = "T"                     # 1-based 258, the insert's last base
+    genome[400] = genome[401] = "A"       # 1-based 401-402, the next exon's first two
+    tx = make_transcript("+", exons=exons)
+
+    with GenomeFasta(write_fasta(tmp_path, {"chr1": "".join(genome)})) as fa:
+        result = predict_consequence(tx, fa, "chr1", 250, 258)
+
+    assert result.ptc_offset == 8, "the codon spanning the junction is still found"
+    assert result.distance_to_last_junction is None, "and -2 is not a distance"
+    assert result.nmd_predicted is False
+    assert result.consequence_class == PTC_ESCAPE
+    assert "no exon-exon junction downstream" in describe(result)

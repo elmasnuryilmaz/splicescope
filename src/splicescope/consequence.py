@@ -356,10 +356,18 @@ def _nmd_from_downstream(
     ptc = find_ptc(sequence, frame)
     if ptc is None:
         return None, None, False
-    last_junction = sum(lengths[:-1]) if len(lengths) > 1 else None
-    if last_junction is None:
+    # Every exon but the last is followed by a junction, so the final one sits this far in;
+    # with a single exon left that is 0, and no stop can be upstream of it.
+    distance = sum(lengths[:-1]) - (ptc + 3)
+    if distance < 0:
+        # Nothing downstream of the stop is a junction: it is in the final exon, or its
+        # codon straddles the junction before it, or only one exon remains and there is
+        # no junction at all. The rule needs one and has none, so the distance does not
+        # exist — written as a negative number it made `describe` say the stop sat "only
+        # -7 nucleotides before the last exon-exon junction, within the 50 the rule
+        # allows", which is the right verdict for the wrong reason. One condition rather
+        # than two: the last-exon exception is the case `sum(lengths[:-1])` makes 0.
         return offset_before + ptc, None, False
-    distance = last_junction - (ptc + 3)
     return offset_before + ptc, distance, distance > NMD_DISTANCE_RULE
 
 
@@ -615,15 +623,26 @@ def predict_consequence(
     sequence = genome.fetch(chrom, start, end, tx.strand)
     ptc_offset = find_ptc(sequence, frame_offset)
 
+    resume = _resume_after(tx, start, end)
+    tail, lengths = ("", [])
+    if ptc_offset is None and resume is not None:
+        # A ribosome reads the mature mRNA straight through a splice junction, so a codon
+        # can begin in the last one or two bases of this sequence and finish in the next
+        # exon. Searching the insert and then the downstream sequence separately examines
+        # neither half of such a codon: the downstream search starts at the frame the
+        # insert leaves behind, which is exactly past it. Two bases of lookahead bring it
+        # into view. Only read when the insert holds no stop of its own — one found there
+        # is earlier, so it wins, and the sequence below is then never needed either.
+        tail, lengths = downstream_sequence(tx, genome, chrom, resume)
+        ptc_offset = find_ptc(sequence + tail[:2], frame_offset)
+
     if ptc_offset is None:
         if not base["frameshift"]:
             return Consequence(**base, consequence_class=IN_FRAME)
         # The frame is shifted but the insert itself carries no stop, so the
         # first premature stop lies downstream in the retained exons.
-        resume = _resume_after(tx, start, end)
         if resume is None:
             return Consequence(**base, consequence_class=FRAMESHIFT)
-        tail, lengths = downstream_sequence(tx, genome, chrom, resume)
         offset, distance, nmd = _nmd_from_downstream(
             tail, lengths, (frame_offset + insert_length) % 3, insert_length
         )
@@ -650,6 +669,15 @@ def predict_consequence(
     # Distance from the PTC to the final exon-exon junction of the transcript:
     # what is left of the cryptic exon, plus every downstream exon but the last.
     distance = (insert_length - ptc_offset - 3) + sum(downstream[:-1])
+    if distance < 0:
+        # The stop straddles the last junction, or sits past it. Either way it is not
+        # upstream of a junction, so the rule has nothing to measure and decay is not
+        # predicted — the same answer as having no junction at all, reached a different
+        # way. Only reachable since a stop spanning the 3' end of the insert became
+        # visible; before that `find_ptc` could not return an offset this late.
+        base["distance_to_last_junction"] = None
+        base["nmd_predicted"] = False
+        return Consequence(**base, consequence_class=PTC_ESCAPE)
     base["distance_to_last_junction"] = distance
     nmd = distance > NMD_DISTANCE_RULE
     base["nmd_predicted"] = nmd
@@ -944,7 +972,9 @@ def describe(row) -> str:
 
     offset = field("ptc_offset")
     distance = field("distance_to_last_junction")
-    frame = " shifts the reading frame, and" if field("frameshift", False) else ", and"
+    # The "and" belongs to "shifts the reading frame"; without it the sentence dangles,
+    # which an in-frame insert carrying a premature stop now reaches far more often.
+    frame = " shifts the reading frame, and" if field("frameshift", False) else ","
     where = ""
     if offset is not None:
         unit = "nucleotide" if offset == 1 else "nucleotides"

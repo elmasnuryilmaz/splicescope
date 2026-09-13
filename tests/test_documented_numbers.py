@@ -271,8 +271,11 @@ def test_the_readme_counts_what_the_repository_actually_contains():
     assert f"Break the code {mutations} ways" in workflow, "the CI step name too"
 
     equivalent = sum(1 for m in survey.MUTATIONS if m[4] == "equivalent")
-    spelled = {2: "two", 3: "three", 4: "four", 5: "five"}[equivalent]
-    assert f"{spelled} documented equivalent mutants" in workflow
+    spelled = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five"}[equivalent]
+    plural = "mutant" if equivalent == 1 else "mutants"
+    assert f"{spelled} documented equivalent {plural}" in workflow.lower(), (
+        f"{equivalent} mutation(s) are expected to survive"
+    )
     assert survey.__doc__.count("equivalent") >= 1
 
     properties = sum(

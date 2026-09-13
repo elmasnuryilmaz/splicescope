@@ -338,6 +338,51 @@ All notable changes to this project are documented here. The format is based on
   all. A test checks that the committed notebook is still the builder's — a notebook
   hand-edited in Jupyter and committed would otherwise be discarded silently by the next
   rebuild.
+- **The survey could not tell a mutation from a suite that was already failing.** A
+  mutation is judged caught by the suite failing, so a suite already red fails for every
+  one of them — every mutant reported as caught, the equivalent ones included, and the
+  survey saying everything is fine. Not hypothetical: it happened mid-session, and the
+  only sign was two mutants documented as equivalent turning up as caught. The run now
+  starts by checking the suite passes untouched, and refuses to judge anything if it does
+  not. The two mutants are equivalent after all, which a direct measurement settled.
+- **The last-exon exception and the negative-distance guard were two rules for one thing.**
+  With a single exon left, the last junction sits at offset 0 and any stop is past it, so
+  the guard already gives what the exception gave — one condition covers a stop in the
+  final exon, a codon straddling the junction before it, and no junction at all. The
+  mutation that used to pin the exception became equivalent, which is how the overlap
+  surfaced; it is replaced by two that pin the single rule on both paths.
+- **A stop codon spanning the splice junction was never examined.** A ribosome reads the
+  mature mRNA straight through, so a codon can begin in the last one or two bases of a
+  cryptic exon and finish in the next one. `predict_consequence` searched the exon and
+  then the retained downstream sequence separately, and the downstream search starts at
+  the frame the exon leaves behind — which is exactly past that codon, so neither half
+  examined it. Two bases of lookahead bring it into view, read only when the exon holds no
+  stop of its own. Across eight simulator configurations and ten seeds each, it is the
+  first premature stop for 11 of 719 cassette-exon predictions, and on one of those it
+  changes the verdict outright: an in-frame insertion whose last codon spans the junction
+  goes from `in_frame_insertion` — the tool saying the protein simply gains a few amino
+  acids — to `ptc_nmd`. The correction can only move events *towards* decay, because the
+  codon it finds is always earlier than the one reported before, which leaves more of the
+  exon between the stop and the last junction. Splice-site shifts are unaffected (749
+  checked, none moved), and the committed figure and tutorial are byte-identical either
+  way. The truncation path has the same shape and is **not** fixed:
+  the simulator emits one truncation per six hundred junction changes, so there is nothing
+  to validate a fix against. That is recorded in METHODS §8b rather than guessed at.
+- **`distance_to_last_junction` was written as a negative number.** A stop in the final
+  exon is past the last exon-exon junction, so the distance to it does not exist — a
+  principle an existing test already states, for the route where there is no junction at
+  all. The other route was uncovered: when a junction exists but the stop is downstream of
+  it, the subtraction ran anyway and `describe` reported *"it sits only -7 nucleotides
+  before the last exon-exon junction, within the 50 the rule allows"* — the right verdict
+  for the wrong reason. Five of those 719 predictions. Both routes now report
+  no distance, and the sentence the last-exon branch already writes is the one a reader
+  gets.
+- **The cassette calls are re-derived from the annotation, end to end.** The unit tests
+  build a transcript by hand; this one reads the simulated genome and GTF back through the
+  real readers and recomputes each cassette's reading frame, first premature stop and
+  distance from the annotation alone — a second implementation of the rule rather than a
+  second call into the first. It is how the junction-spanning codon was found, after
+  disagreeing with the pipeline on 4 of 27 cassettes and being wrong itself on 2 of them.
 - **A splice site with nothing to choose between was tightening the null for every other
   site.** The most consequential defect found by this audit, and it was inside the
   dispersion estimator. Most splice sites in a genome are constitutive and carry a single

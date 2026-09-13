@@ -19,7 +19,9 @@ are now each pinned by a test.
 Three mutants survive and are expected to: they are equivalent, not uncaught.
 
   - ``find_ptc`` stopping at ``len(sequence)`` instead of ``len(sequence) - 2`` only ever
-    compares slices shorter than three characters, which cannot equal a stop codon.
+    compares slices shorter than three characters, which cannot equal a stop codon. That
+    stays true now the sequence carries two bases of the next exon: the lookahead makes a
+    real codon of the *last* two bases of the insert, not of a slice running off the end.
   - Leaving the likelihood-ratio statistic unclamped gives the same p-value, because
     ``chi2.sf`` of a negative value is 1.0. Only the reported statistic would look wrong.
   - Testing the far end of an exon rather than its near end in
@@ -54,15 +56,23 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
     ("consequence", "50-nt rule boundary made inclusive",
      "distance, distance > NMD_DISTANCE_RULE",
      "distance, distance >= NMD_DISTANCE_RULE", "caught"),
-    ("consequence", "last exon's length counted into the distance",
-     "last_junction = sum(lengths[:-1]) if len(lengths) > 1 else None",
-     "last_junction = sum(lengths) if len(lengths) > 1 else None", "caught"),
     ("consequence", "distance measured from the start of the stop codon",
-     "distance = last_junction - (ptc + 3)",
-     "distance = last_junction - ptc", "caught"),
-    ("consequence", "last-exon exception removed",
-     "last_junction = sum(lengths[:-1]) if len(lengths) > 1 else None",
-     "last_junction = sum(lengths[:-1]) if len(lengths) > 0 else None", "caught"),
+     "    distance = sum(lengths[:-1]) - (ptc + 3)",
+     "    distance = sum(lengths[:-1]) - ptc", "caught"),
+    # Replaces "last-exon exception removed", which tested `len(lengths) > 1` against
+    # `> 0`. That exception is no longer a branch of its own: with one exon left the last
+    # junction is at 0 and any stop is past it, so the guard below gives the same answer
+    # and the old mutation became equivalent rather than caught.
+    ("consequence", "a stop past the last junction given a negative distance",
+     "    distance = sum(lengths[:-1]) - (ptc + 3)\n    if distance < 0:",
+     "    distance = sum(lengths[:-1]) - (ptc + 3)\n    if False:", "caught"),
+    ("consequence", "a cassette's own negative distance reported as a number",
+     "    distance = (insert_length - ptc_offset - 3) + sum(downstream[:-1])\n    if distance < 0:",
+     "    distance = (insert_length - ptc_offset - 3) + sum(downstream[:-1])\n    if False:",
+     "caught"),
+    ("consequence", "the final exon counted as having a junction after it",
+     "    distance = sum(lengths[:-1]) - (ptc + 3)",
+     "    distance = sum(lengths) - (ptc + 3)", "caught"),
     ("consequence", "reading frame not inherited across the junction",
      "    begin = (3 - frame_offset) % 3",
      "    begin = frame_offset % 3", "caught"),
@@ -397,6 +407,37 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
 ]
 
 
+def _suite() -> subprocess.CompletedProcess:
+    """Run the suite the way every mutation is judged by."""
+    return subprocess.run(
+        # `unmutated_source` marks the tests that read this package's own source and
+        # assume nobody edited it. One of them checks that every mutation below still
+        # matches something — which is false for the mutation being applied right now, so
+        # left in it would fail on every run and report every mutation as caught,
+        # equivalent mutants included. That would quietly turn this whole survey green.
+        [sys.executable, "-m", "pytest", "-x", "-q", "-m", "not unmutated_source", "tests"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+
+
+def baseline_is_green() -> bool:
+    """Refuse to start on a suite that is already failing.
+
+    A mutation is judged "caught" by the suite failing, and a suite already red fails for
+    every one of them — so every mutant, including the equivalent ones, is reported as
+    caught and the survey says everything is fine. That is not a hypothetical: a stale
+    test count in the README once put this run in exactly that state, and the only sign
+    was two mutants documented as equivalent turning up as caught.
+    """
+    done = _suite()
+    if done.returncode == 0:
+        return True
+    print("the suite does not pass before anything is broken, so nothing can be judged "
+          "by whether it fails:\n")
+    print("\n".join(done.stdout.strip().splitlines()[-12:]))
+    return False
+
+
 def survey(mutations, quiet: bool) -> int:
     originals = {m[0]: (SRC / f"{m[0]}.py").read_text() for m in mutations}
     surprises = []
@@ -409,17 +450,7 @@ def survey(mutations, quiet: bool) -> int:
                 surprises.append((module, label, verdict))
             else:
                 path.write_text(source.replace(old, new))
-                done = subprocess.run(
-                    # `unmutated_source` marks the tests that read this package's own
-                    # source and assume nobody edited it. One of them checks that every
-                    # mutation below still matches something — which is false for the
-                    # mutation being applied right now, so left in it would fail on every
-                    # run and report every mutation as caught, equivalent mutants
-                    # included. That would quietly turn this whole survey green.
-                    [sys.executable, "-m", "pytest", "-x", "-q",
-                     "-m", "not unmutated_source", "tests"],
-                    cwd=ROOT, capture_output=True, text=True,
-                )
+                done = _suite()
                 path.write_text(source)
                 caught = done.returncode != 0
                 got = "caught" if caught else "survived"
@@ -450,6 +481,8 @@ def main() -> int:
         modules = sorted({m[0] for m in MUTATIONS})
         parser.error(f"no mutations for {args.module!r}; have {modules}")
     print(f"{len(chosen)} mutation(s); each runs the whole suite, so this takes a while.\n")
+    if not baseline_is_green():
+        return 2
     return survey(chosen, args.quiet)
 
 

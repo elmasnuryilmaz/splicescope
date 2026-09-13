@@ -290,3 +290,76 @@ def test_consequence_command_handles_a_table_with_no_cassette_exons(demo, tmp_pa
     assert rc == 0
     assert out.exists()
     assert pd.read_csv(out, sep="\t").empty
+
+
+def test_every_cassette_call_is_recomputed_from_the_annotation(demo):
+    """The tool's central claim, checked end to end against arithmetic done here.
+
+    The unit tests build a transcript by hand. This one takes the simulated genome and
+    GTF, reads them back through the real readers, and re-derives each cassette's reading
+    frame, first premature stop and distance to the last exon-exon junction from the
+    annotation alone — a second implementation of the rule, not a second call into the
+    first. It is how the junction-spanning stop codon was found.
+    """
+    from splicescope import annotate, events
+    from splicescope.consequence import PTC_ESCAPE, PTC_NMD, annotate_consequences
+    from splicescope.io import read_gtf_junctions, read_many_star_sj
+
+    data = demo
+    tx = load_transcripts(data / "annotation.gtf")
+    # from the files on disk, so this is the table a real run builds
+    sj = {p.name.split(".")[0]: p for p in sorted((data / "sj").glob("*"))}
+    ann = annotate.annotate_junctions(
+        read_many_star_sj(sj), read_gtf_junctions(data / "annotation.gtf")
+    )
+    cassettes = events.detect_events(ann)
+    cassettes = cassettes[cassettes["event_type"] == "SE"]
+    assert not cassettes.empty, "the fixture has to contain cassettes to check"
+
+    with GenomeFasta(data / "genome.fa") as fa:
+        predicted = annotate_consequences(
+            cassettes, tx, fa, start_col="exon_start", end_col="exon_end"
+        )
+        checked = 0
+        for row in predicted.itertuples(index=False):
+            if row.consequence_class not in (PTC_NMD, PTC_ESCAPE):
+                continue
+            host = tx[row.transcript_id]
+            start, end = int(row.exon_start), int(row.exon_end)
+
+            # the reading frame: coding bases strictly before the exon, in this order
+            frame = sum(
+                min(stop, start - 1) - begin + 1
+                for begin, stop in host.cds
+                if begin < start
+            ) % 3
+            assert frame == row.frame_offset, f"{row.gene_id}: reading frame"
+
+            # the first in-frame stop, over the exon and everything retained after it
+            insert = fa.fetch(host.chrom, start, end, host.strand)
+            downstream = [(a, b) for a, b in host.exons if a > end]
+            read = insert + "".join(
+                fa.fetch(host.chrom, a, b, host.strand) for a, b in downstream
+            )
+            first = (3 - frame) % 3
+            stop = next(
+                (i for i in range(first, len(read) - 2, 3) if read[i : i + 3] in STOP_CODONS),
+                None,
+            )
+            assert stop == row.ptc_offset, f"{row.gene_id}: first premature stop"
+
+            # and its distance to the last exon-exon junction, which does not exist when
+            # the stop is past that junction
+            lengths = [b - a + 1 for a, b in downstream]
+            last_junction = len(insert) + sum(lengths[:-1]) if lengths else None
+            distance = None if last_junction is None else last_junction - (stop + 3)
+            if distance is not None and distance < 0:
+                distance = None
+            if distance is None:
+                assert pd.isna(row.distance_to_last_junction), f"{row.gene_id}: no distance"
+            else:
+                assert distance == row.distance_to_last_junction, f"{row.gene_id}: distance"
+                assert bool(row.nmd_predicted) is (distance > 50), f"{row.gene_id}: the rule"
+            checked += 1
+
+    assert checked >= 5, f"only {checked} cassettes carried a premature stop to check"

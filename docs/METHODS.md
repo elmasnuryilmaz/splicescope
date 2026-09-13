@@ -450,7 +450,18 @@ exons are assembled and the in-frame scan continues there, because that is where
 first premature stop then lies. The same applies to truncations, which cannot contain a
 stop inside the removed interval by construction.
 
-Three boundaries decide whether a stop found that way is *premature*:
+**The scan spans the splice junction rather than stopping at it.** A ribosome reads the
+mature mRNA straight through, so a codon can begin in the last one or two bases of the
+insert and finish in the next exon. Searching the insert and then the downstream sequence
+separately examines neither half of such a codon — the downstream scan starts at the frame
+the insert leaves behind, which is exactly past it — so two bases of lookahead are read
+before the insert's own scan is given up on. That codon is the first premature stop for 11
+of 719 simulated cassette predictions, and on one of them it is the difference between
+`in_frame_insertion`, meaning the protein simply gains a few amino acids, and `ptc_nmd`.
+An in-frame insert is not exempt: when the frame entering it is not zero, its codon grid
+is offset and its last codon runs past the 3' end like any other.
+
+Four boundaries decide whether a stop found that way is *premature*:
 
 - **The transcript's own stop is not a PTC.** A truncation that removes whole codons
   leaves the downstream frame untouched, so the first in-frame stop it reaches is the
@@ -462,10 +473,26 @@ Three boundaries decide whether a stop found that way is *premature*:
 - **Both sites annotated means an exon skip, not a shift.** Such a junction is left
   uninterpreted rather than read as one contiguous deletion spanning the skipped exon
   *and* the intron beyond it.
+- **A stop past the last junction has no distance to it.** A stop in the final exon, or
+  one whose codon straddles the junction before it, is not upstream of any junction, so
+  the rule has nothing to measure and decay is not predicted. `distance_to_last_junction`
+  is empty there rather than negative — it was written as a negative number for 5 of those
+  719 predictions, which turned the plain-English reading into *"it sits only -7
+  nucleotides before the last exon-exon junction, within the 50 the rule allows"*: the
+  right verdict for the wrong reason.
 
 The reading frame itself comes from `Transcript.frame_at`, which applies the GTF phase of
 the first coding block — non-zero for GENCODE's 5'-incomplete `cds_start_NF` transcripts,
 which would otherwise be translated out of frame from their first base.
+
+**The junction-spanning codon is caught for insertions, not for truncations.** A
+truncation's scan begins in the sequence retained after the cut, at the frame the upstream
+exon leaves behind, so a codon starting in the last bases before the cut is not examined
+there either. The same reasoning applies and the same fix would, but the simulator emits
+one truncation per six hundred junction changes — and that one at a codon boundary, where
+no codon can straddle — so there is nothing here to measure a fix against or to check it
+with. It is recorded rather than guessed at. Extensions, which are the other 596, go
+through the cassette path and are covered.
 
 **One caveat on splice-site shifts.** The extension a junction implies is whatever lies
 between the novel site and the annotated one, which for a deep intronic site can be a

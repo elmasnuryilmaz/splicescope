@@ -250,13 +250,15 @@ def test_every_event_is_built_from_junctions_that_were_observed(observed, known)
     for row in events.itertuples(index=False):
         assert row.chrom in {c for c, _, _, _ in seen}
         assert row.strand in {"+", "-"}
+        # `pd.isna`, not `value == value`: a coordinate column is a nullable integer, and
+        # `pd.NA == pd.NA` is `pd.NA`, whose truth value raises rather than being False
         for field in ("skip_start", "inc1_start", "inc2_start", "a_j1_start", "b_j1_start"):
             value = getattr(row, field, None)
-            if value is not None and value == value:
+            if value is not None and not pd.isna(value):
                 assert int(value) in starts, f"{field}={value} was never observed"
         for field in ("skip_end", "inc1_end", "inc2_end", "a_j1_end", "b_j1_end"):
             value = getattr(row, field, None)
-            if value is not None and value == value:
+            if value is not None and not pd.isna(value):
                 assert int(value) in ends, f"{field}={value} was never observed"
 
 
@@ -524,7 +526,7 @@ def test_the_simulator_only_ever_claims_events_it_could_place(n_genes, cryptic, 
     for row in ds.truth.itertuples(index=False):
         for field in ("exonA_start", "exonA_end", "exonB_start", "exonB_end", "alt_pos"):
             value = getattr(row, field)
-            if value is not pd.NA and value == value:
+            if not pd.isna(value):
                 assert row.intron_start <= value <= row.intron_end, (
                     f"{field}={value} lies outside its host intron"
                 )

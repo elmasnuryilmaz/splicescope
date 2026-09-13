@@ -642,3 +642,113 @@ def test_the_event_level_test_uses_the_counts_and_not_the_ranks():
         "3 vs 3 on ranks alone clears nothing — which is why the fallback must not be "
         "reachable by accident"
     )
+
+
+def _annotated_with_a_cassette_and_an_alt_site():
+    """One cassette exon and one alternative acceptor, in two samples.
+
+    Deliberately no mutually exclusive exon: the point of the tests below is that a
+    dataset which contains some event types but not others still gets every column.
+    """
+    rows = []
+    for sample in ("s1", "s2"):
+        rows += [
+            # cassette: 1000-2000 skipping, 1000-1500 + 1600-2000 including
+            _junction("chr1", 1000, 2000, sample=sample, count=20),
+            _junction("chr1", 1000, 1500, sample=sample, count=60),
+            _junction("chr1", 1601, 2000, sample=sample, count=60),
+            # two acceptors reached from one donor at 5000
+            _junction("chr1", 5000, 6000, sample=sample, count=40),
+            _junction("chr1", 5000, 6030, sample=sample, count=15),
+        ]
+    return pd.DataFrame(rows)
+
+
+def test_the_event_schema_comes_from_the_request_not_from_the_data():
+    """The third and fourth instances of one defect, found by sweeping for it.
+
+    `detect_events` returned whatever `pd.concat` made of the types it happened to find.
+    A dataset with cassettes but no mutually exclusive exons came back without the MXE
+    columns, and one with no events at all came back with five columns where a full
+    result has thirty — so `events["exon_start"]` raised a KeyError or did not depending
+    on the data, and the showcase script's own first move (select the SE rows, hand
+    `exon_start` to the consequence layer) was one eventless dataset away from raising.
+
+    What a caller can reason about is which types they asked for, so that is what the
+    schema is now pinned to.
+    """
+    from splicescope.events import detect_events, event_columns
+
+    frame = _annotated_with_a_cassette_and_an_alt_site()
+    everything = detect_events(frame)
+    nothing = detect_events(frame.iloc[0:0])
+
+    assert not everything.empty and nothing.empty
+    assert list(everything.columns) == list(nothing.columns) == event_columns()
+    assert "exonA_start" in nothing.columns, "MXE columns, though no MXE was found"
+    # the showcase's first move, on the result that used to raise
+    assert nothing[nothing["event_type"] == "SE"][["exon_start", "exon_end"]].empty
+
+    # and asking for less gets less, found or not
+    for types in [("SE",), ("MXE",), ("A5SS", "A3SS")]:
+        found = detect_events(frame, types=types)
+        empty = detect_events(frame.iloc[0:0], types=types)
+        assert list(found.columns) == list(empty.columns) == event_columns(types)
+        assert set(found.columns) < set(event_columns()), f"{types} asks for fewer"
+
+    # A5SS and A3SS describe a site the same way: asking for both adds one set, not two
+    assert event_columns(("A5SS", "A3SS")) == event_columns(("A5SS",))
+
+
+def test_event_psi_has_its_columns_even_with_nothing_to_measure():
+    """`event_psi` already returned the full schema when there were no events, and a
+    column-less frame when there were events but no sample carrying them — the same
+    function, disagreeing with itself about what an empty result looks like."""
+    from splicescope.events import PSI_COLUMNS, detect_events, event_psi
+
+    frame = _annotated_with_a_cassette_and_an_alt_site()
+    evs = detect_events(frame)
+
+    measured = event_psi(frame, evs, min_reads=1)
+    no_events = event_psi(frame, evs.iloc[0:0], min_reads=1)
+    no_samples = event_psi(frame.iloc[0:0], evs, min_reads=1)
+
+    assert not measured.empty and no_events.empty and no_samples.empty
+    for frame_ in (measured, no_events, no_samples):
+        assert list(frame_.columns) == PSI_COLUMNS
+    # what a caller does next with a result that found nothing
+    assert no_samples.groupby("event_id")["psi"].mean().empty
+    assert no_samples.to_csv(index=False).splitlines()[0] == (
+        measured.to_csv(index=False).splitlines()[0]
+    )
+
+
+def test_event_coordinates_are_written_as_positions_not_as_measurements():
+    """`events.tsv` said an exon began at `1840.0`.
+
+    A table holding more than one event type has a missing value wherever a column
+    belongs to a different type, and float64 is the only NumPy dtype that can hold one —
+    so every coordinate in a mixed table picked up a decimal point. A genomic position
+    with a `.0` reads as a rounded measurement, and a downstream tool parsing the column
+    as an integer fails on it. A nullable integer column holds the same values and the
+    same gaps, and writes neither.
+    """
+    from splicescope.events import detect_events
+
+    frame = _annotated_with_a_cassette_and_an_alt_site()
+    evs = detect_events(frame)
+    assert set(evs["event_type"]) == {"SE", "A3SS"}, "a mixed table, which is the hard case"
+
+    header, *rows = evs.to_csv(sep="\t", index=False).splitlines()
+    fields = header.split("\t")
+    for row in rows:
+        for name, value in zip(fields, row.split("\t"), strict=True):
+            if name in ("event_id", "event_type", "chrom", "strand", "gene_id", "site_kind"):
+                continue
+            assert "." not in value, f"{name}={value} is a position, not a measurement"
+            assert value == "" or int(value) >= 0
+
+    # and the values survive the dtype: still usable as numbers, still missing where absent
+    se = evs[evs["event_type"] == "SE"].iloc[0]
+    assert int(se.exon_end) - int(se.exon_start) > 0
+    assert pd.isna(se.site_pos), "an SE has no alternative splice site"

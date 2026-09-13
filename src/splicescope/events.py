@@ -33,6 +33,7 @@ from __future__ import annotations
 import warnings
 from bisect import bisect_left, bisect_right
 from collections import defaultdict
+from collections.abc import Sequence
 
 import pandas as pd
 
@@ -40,6 +41,45 @@ from .io import donor_acceptor
 
 EVENT_KEY = "event_id"
 EVENT_TYPES = ("SE", "MXE", "A5SS", "A3SS")
+
+#: Every event carries these, whatever its type.
+COMMON_COLUMNS = ["event_id", "event_type", "chrom", "strand", "gene_id"]
+
+#: The coordinates each event type adds. A table of events holds more than one type, so
+#: its columns are the union over the types that were *asked for* — not over the types
+#: that happened to be found, which would make the schema an accident of the data.
+TYPE_COLUMNS = {
+    "SE": [
+        "exon_start", "exon_end", "inc1_start", "inc1_end",
+        "inc2_start", "inc2_end", "skip_start", "skip_end",
+    ],
+    "MXE": [
+        "exonA_start", "exonA_end", "exonB_start", "exonB_end",
+        "a_j1_start", "a_j1_end", "a_j2_start", "a_j2_end",
+        "b_j1_start", "b_j1_end", "b_j2_start", "b_j2_end",
+    ],
+    "A5SS": ["site_pos", "site_kind", "incl_start", "incl_end", "n_alternatives"],
+    "A3SS": ["site_pos", "site_kind", "incl_start", "incl_end", "n_alternatives"],
+}
+
+#: The long table :func:`event_psi` returns.
+PSI_COLUMNS = [
+    "event_id", "event_type", "gene_id", "sample", "psi", "inc_reads", "total_reads"
+]
+
+
+def event_columns(types: Sequence[str] = EVENT_TYPES) -> list[str]:
+    """The columns a table of these event types has, found or not.
+
+    ``A5SS`` and ``A3SS`` describe a splice site the same way, so asking for both adds
+    one set of columns, not two.
+    """
+    cols = list(COMMON_COLUMNS)
+    for kind in types:
+        for column in TYPE_COLUMNS.get(kind, []):
+            if column not in cols:
+                cols.append(column)
+    return cols
 
 
 def _unique_junctions(annotated: pd.DataFrame) -> pd.DataFrame:
@@ -319,6 +359,25 @@ def detect_alt_ss_events(
     return pd.DataFrame(events)
 
 
+def _as_coordinates(frame: pd.DataFrame) -> pd.DataFrame:
+    """Keep genomic positions integral.
+
+    A table holding more than one event type has a NaN wherever a column belongs to a
+    different type, and a float64 column is what NumPy has to use to hold one — so
+    ``events.tsv`` wrote an exon boundary as ``1840.0``. That is not a coordinate, it
+    reads as a rounding, and a tool downstream that parses the column as an integer
+    fails on it. pandas' nullable integer dtype holds the same values and the missing
+    ones, and writes ``1840`` and an empty field.
+    """
+    positions = [
+        c for c in frame.columns
+        if c not in ("event_id", "event_type", "chrom", "strand", "gene_id", "site_kind")
+    ]
+    for column in positions:
+        frame[column] = frame[column].astype("Int64")
+    return frame
+
+
 def detect_events(
     annotated: pd.DataFrame,
     types: tuple[str, ...] = EVENT_TYPES,
@@ -361,9 +420,12 @@ def detect_events(
     if "A3SS" in types:
         parts.append(detect_alt_ss_events(annotated, "A3SS", exclude=used))
     parts = [p for p in parts if not p.empty]
+    columns = event_columns(types)
     if not parts:
-        return pd.DataFrame(columns=["event_id", "event_type", "chrom", "strand", "gene_id"])
-    return pd.concat(parts, ignore_index=True)
+        return _as_coordinates(pd.DataFrame(columns=columns))
+    # reindex, not concat alone: an SE-only dataset would otherwise come back without the
+    # MXE columns, so whether `events["exonA_start"]` raises would depend on the data
+    return _as_coordinates(pd.concat(parts, ignore_index=True).reindex(columns=columns))
 
 
 def event_psi(annotated: pd.DataFrame, events: pd.DataFrame, min_reads: int = 10) -> pd.DataFrame:
@@ -372,9 +434,8 @@ def event_psi(annotated: pd.DataFrame, events: pd.DataFrame, min_reads: int = 10
     Returns a long table keyed by ``event_id`` (feed to
     :func:`splicescope.diff.differential_splicing` with ``key=["event_id"]``).
     """
-    long_cols = ["event_id", "event_type", "gene_id", "sample", "psi", "inc_reads", "total_reads"]
     if events.empty:
-        return pd.DataFrame(columns=long_cols)
+        return pd.DataFrame(columns=PSI_COLUMNS)
 
     df = _with_sites(annotated)
     counts = (
@@ -435,4 +496,6 @@ def event_psi(annotated: pd.DataFrame, events: pd.DataFrame, min_reads: int = 10
                     "total_reads": float(total),
                 }
             )
-    return pd.DataFrame(rows)
+    # `rows` is empty when the events have no sample to be measured in — a column-less
+    # frame there would give the result a schema that depends on the input
+    return pd.DataFrame(rows, columns=PSI_COLUMNS)

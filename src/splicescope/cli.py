@@ -408,14 +408,37 @@ def _cmd_consequence(args: argparse.Namespace) -> int:
     events = pd.read_csv(args.events, sep="\t")
     mode = args.mode
     if mode == "auto":
-        if {"exon_start", "exon_end"} <= set(events.columns):
+        # A column being *present* means nothing: an events table carries a column for
+        # every event type that was asked for, so a run that found no cassette exon still
+        # has an empty `exon_start`. Detecting on presence would pick cassette mode for
+        # it and write an empty consequence table — which reads as "no cassette exon has
+        # a consequence" rather than "there were no cassette exons". Detect on values.
+        def _usable(pair):
+            return set(pair) <= set(events.columns) and events[list(pair)].notna().all(axis=1).any()
+
+        if _usable(("exon_start", "exon_end")):
             mode = "exon"
-        elif {"start", "end"} <= set(events.columns):
+        elif _usable(("start", "end")):
             mode = "junction"
         else:
+            have = sorted(
+                {"exon_start", "exon_end", "start", "end"} & set(events.columns)
+            )
+            detail = (
+                f"it has {have} but every row leaves them empty"
+                if have
+                else "it has neither exon_start/exon_end (cassette exons) nor start/end "
+                "(junctions)"
+            )
             print(
-                f"error: {args.events} has neither exon_start/exon_end (cassette exons) "
-                "nor start/end (junctions); pass --mode explicitly",
+                f"error: nothing in {args.events} can be given a consequence: {detail}.\n"
+                f"  {len(events)} rows were read"
+                + (
+                    f", of types {sorted(set(events['event_type'].dropna()))}"
+                    if "event_type" in events and not events.empty
+                    else ""
+                )
+                + ".\n  pass --mode explicitly to override.",
                 file=sys.stderr,
             )
             return 2

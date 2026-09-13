@@ -338,6 +338,33 @@ All notable changes to this project are documented here. The format is based on
   all. A test checks that the committed notebook is still the builder's — a notebook
   hand-edited in Jupyter and committed would otherwise be discarded silently by the next
   rebuild.
+- **An event table's columns were an accident of the data.** Sweeping for the defect
+  above found two more of it, in `events`. `detect_events` returned whatever `pd.concat`
+  made of the types it happened to find: a dataset with cassette exons but no mutually
+  exclusive ones came back without the MXE columns, and one with no events at all came
+  back with five columns where a full result has thirty. So `events["exon_start"]` raised
+  a `KeyError` or did not depending on the input — and the showcase script's own first
+  move, select the SE rows and hand `exon_start` to the consequence layer, was one
+  eventless dataset away from raising. The schema is now pinned to the event types that
+  were *asked for*, which is something a caller can reason about, and `event_columns()`
+  reports it. `event_psi` had the same split: the full schema when there were no events,
+  a column-less frame when there were events but no sample carrying them.
+- **`events.tsv` wrote an exon boundary as `1840.0`.** A table holding more than one
+  event type has a gap wherever a column belongs to a different type, and float64 is the
+  only NumPy dtype that can hold one, so every coordinate in a mixed table picked up a
+  decimal point. A genomic position with a `.0` reads as a rounded measurement, and a
+  tool downstream parsing the column as an integer fails on it. Coordinates are now a
+  nullable integer dtype: same values, same gaps, and `1840` in the file. Read counts
+  stay floating point, because an inclusion count is the mean of two junctions and 7.5
+  is a real value.
+- **A consequence run on an alternative-splice-site table no longer answers a question
+  it was not asked.** Pinning the event schema above had a consequence of its own, caught
+  before it shipped: `splicescope consequence` picked cassette-exon mode by testing
+  whether the `exon_start` column was *present*, and it is now always present. On a file
+  holding only A5SS and A3SS events it would have found no cassette exon, written an
+  empty `consequence.tsv`, and exited 0 — which reads as *these cassette exons change no
+  protein*. Detection now tests whether the columns hold anything, and the refusal says
+  how many rows the file had and of which types.
 - **An enrichment result that found nothing had no columns.** Found by a property test,
   which could not index the frame it got back. `over_representation` skips a gene set
   that contains no hit, so a collection where none of them overlaps left the record list

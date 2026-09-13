@@ -285,3 +285,51 @@ def test_the_cli_says_which_step_could_not_be_run(dataset, tmp_path, capsys):
     assert "warning: junctions: no unit had" in error
     assert "warning: events: no unit had" in error
     assert "UserWarning" not in error, "not raw Python warnings"
+
+
+def test_an_events_table_with_no_cassette_exon_is_refused_not_answered(
+    dataset, tmp_path, capsys
+):
+    """A consequence of pinning the event schema, caught before it shipped.
+
+    `detect_events` now returns a column for every event type that was asked for, so a
+    run that found only alternative splice sites still writes an `exon_start` column,
+    empty. The mode auto-detection tested for the column being *present*, so it chose
+    cassette mode for that file, found no SE rows, and wrote an empty `consequence.tsv`
+    with exit 0 — which reads as *these cassette exons change no protein*, a conclusion,
+    when the truth is that the file held no cassette exon to begin with.
+
+    Detection now tests for the columns holding something, and the refusal says what was
+    actually in the file.
+    """
+    from splicescope import annotate
+    from splicescope.events import detect_events
+    from splicescope.io import read_gtf_junctions, read_many_star_sj
+
+    _, data, _ = dataset
+    # built from the files on disk, so this is the table a real run writes
+    sj = {p.name.split(".")[0]: p for p in sorted((data / "sj").glob("*"))}
+    observed = read_many_star_sj(sj)
+    known = read_gtf_junctions(data / "annotation.gtf")
+    events = detect_events(annotate.annotate_junctions(observed, known))
+    alt_only = events[events["event_type"].isin(["A5SS", "A3SS"])]
+    assert not alt_only.empty and "exon_start" in alt_only.columns
+    assert alt_only["exon_start"].isna().all(), "present, and empty in every row"
+
+    path = tmp_path / "alt_only.tsv"
+    alt_only.to_csv(path, sep="\t", index=False)
+    out = tmp_path / "cons.tsv"
+    code = main(
+        [
+            "consequence",
+            "--events", str(path),
+            "--gtf", str(data / "annotation.gtf"),
+            "--genome", str(data / "genome.fa"),
+            "--out", str(out),
+        ]
+    )
+    error = capsys.readouterr().err
+    assert code == 2 and not out.exists(), "no empty table that reads as a finding"
+    assert "every row leaves them empty" in error
+    assert "A3SS" in error or "A5SS" in error, "say what the file does hold"
+    assert str(len(alt_only)) in error, "and how much of it"

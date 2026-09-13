@@ -7,6 +7,10 @@
 # is not something a test job should do.
 #
 #   pip install -e . -c constraints-oldest.txt
+# hypothesis is a test dependency rather than a runtime one, pinned here for the same
+# reason as the rest: the floor pyproject declares is checked by installing it. The
+# property tests pass on it.
+hypothesis==6.80.0
 numpy==1.23.5
 pandas==1.5.0
 scipy==1.9.3

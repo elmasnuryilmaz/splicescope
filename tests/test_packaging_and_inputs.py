@@ -213,7 +213,13 @@ def test_the_oldest_constraints_match_the_declared_floors():
     is real. It only proves anything while it stays in step with `pyproject.toml`: raise
     a floor without repinning and the job silently tests a version the package no longer
     claims to support, or a dependency added without a pin is never exercised at its
-    floor at all."""
+    floor at all.
+
+    Every *runtime* dependency has to be pinned. A pin may also name something from an
+    optional extra — `hypothesis` is, because the property tests import it at module
+    level and a floor nobody installs is a promise rather than a fact — but those are not
+    required, since pinning a linter at its floor would test which rules existed rather
+    than anything about this package."""
     from packaging.requirements import Requirement
     from packaging.version import Version
 
@@ -222,12 +228,16 @@ def test_the_oldest_constraints_match_the_declared_floors():
     except ModuleNotFoundError:  # pragma: no cover - only on Python 3.10
         import tomli as tomllib
 
-    declared = {
-        (r := Requirement(spec)).name: r.specifier
-        for spec in tomllib.loads((ROOT / "pyproject.toml").read_text())["project"][
-            "dependencies"
-        ]
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
+    runtime = {
+        (r := Requirement(spec)).name: r.specifier for spec in project["dependencies"]
     }
+    optional = {
+        (r := Requirement(spec)).name: r.specifier
+        for specs in project.get("optional-dependencies", {}).values()
+        for spec in specs
+    }
+    declared = {**optional, **runtime}
     pinned = {}
     for line in (ROOT / "constraints-oldest.txt").read_text().splitlines():
         line = line.split("#", 1)[0].strip()
@@ -236,9 +246,12 @@ def test_the_oldest_constraints_match_the_declared_floors():
             assert version, f"constraints must pin exactly, got {line!r}"
             pinned[name] = Version(version)
 
-    assert set(pinned) == set(declared), (
-        f"pinned but not declared: {sorted(set(pinned) - set(declared))}; "
-        f"declared but not pinned: {sorted(set(declared) - set(pinned))}"
+    assert not set(pinned) - set(declared), (
+        f"pinned but declared nowhere: {sorted(set(pinned) - set(declared))}"
+    )
+    assert not set(runtime) - set(pinned), (
+        f"a runtime dependency with no floor anybody installs: "
+        f"{sorted(set(runtime) - set(pinned))}"
     )
     for name, version in pinned.items():
         assert declared[name].contains(version), (
@@ -357,3 +370,67 @@ def test_no_sj_files_gives_an_empty_table_with_the_right_columns(tmp_path):
     assert list(out.columns) == [
         "chrom", "start", "end", "strand", "motif", "annotated_star", "count", "sample",
     ]
+
+
+def test_everything_the_suite_imports_is_a_declared_dependency():
+    """Six pushes ran red before anyone looked at CI.
+
+    `tests/test_properties.py` imports `hypothesis` at module level and nothing declared
+    it, so the module failed to collect on every Python in the matrix and on the oldest
+    job. Locally it was installed and the suite was green, which is the whole problem: a
+    dependency you already have is invisible until someone else installs the package.
+
+    This walks every import in the repository and checks it against `pyproject.toml`.
+    Modules with a documented fallback are listed below with the reason, so adding one is
+    a deliberate act rather than an omission.
+    """
+    import ast
+    import sys
+
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # pragma: no cover - only on Python 3.10
+        import tomli as tomllib
+
+    from packaging.requirements import Requirement
+
+    #: Third-party names that need no declaration, and why.
+    ALLOWED = {
+        "splicescope": "this package",
+        "tomli": "stdlib tomllib from 3.11; pytest brings tomli on 3.10, guarded by try",
+        "packaging": "a pip and setuptools dependency, present wherever this installs",
+        "pytest_cov": "a pytest plugin, never imported",
+    }
+    #: import name -> distribution name, where they differ.
+    IMPORT_NAMES = {"sklearn": "scikit-learn", "PIL": "pillow", "yaml": "pyyaml"}
+
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
+    declared = {
+        Requirement(spec).name.lower().replace("-", "_")
+        for spec in project["dependencies"]
+        + [s for specs in project.get("optional-dependencies", {}).values() for s in specs]
+    }
+
+    stdlib = set(sys.stdlib_module_names)
+    missing: dict[str, set[str]] = {}
+    for directory in ("src", "tests", "app", "examples", "validation", "docs"):
+        for path in sorted((ROOT / directory).rglob("*.py")):
+            for node in ast.walk(ast.parse(path.read_text())):
+                if isinstance(node, ast.Import):
+                    names = [alias.name.split(".")[0] for alias in node.names]
+                elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                    names = [node.module.split(".")[0]]
+                else:
+                    continue
+                for name in names:
+                    if name in stdlib or name in ALLOWED:
+                        continue
+                    dist = IMPORT_NAMES.get(name, name).lower().replace("-", "_")
+                    if dist not in declared:
+                        missing.setdefault(name, set()).add(
+                            str(path.relative_to(ROOT))
+                        )
+
+    assert not missing, "imported but declared nowhere in pyproject.toml:\n  " + "\n  ".join(
+        f"{name} — {sorted(where)[:3]}" for name, where in sorted(missing.items())
+    )

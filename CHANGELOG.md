@@ -365,6 +365,17 @@ All notable changes to this project are documented here. The format is based on
   count-based runs move, by roughly a factor of two on the tutorial's data; the committed
   outputs are rebuilt.** Reproduce with `validation/invariant_units.py`; METHODS §5.5 and
   a test compare every figure.
+- **CI had been red for six pushes and nothing said so.** `tests/test_properties.py`
+  imports `hypothesis` at module level and no extra declared it, so the module failed to
+  collect on every Python in the matrix and on the oldest job. It was installed locally,
+  which is the whole problem: a dependency you already have is invisible until somebody
+  else installs the package. `hypothesis>=6.80` is declared and pinned in
+  `constraints-oldest.txt`, and the property tests were run against 6.80.0 to check the
+  floor is real rather than asserted. A test now walks every import in the repository and
+  refuses one that `pyproject.toml` declares nowhere; modules with a documented fallback
+  are listed with the reason, so adding one is deliberate. The constraints test is
+  widened to accept a pin naming an optional extra, while still requiring one for every
+  runtime dependency.
 - **The dashboard asks whether a value is missing in a way that cannot raise.** `x == x`
   is a compact "is this not NaN" and it works right up until the column is nullable:
   `pd.NA == pd.NA` is `pd.NA`, whose truth value raises. The page used it on two values it

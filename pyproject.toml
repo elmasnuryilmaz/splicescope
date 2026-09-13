@@ -32,7 +32,9 @@ dependencies = [
 
 [project.optional-dependencies]
 app = ["streamlit>=1.28"]
-dev = ["pytest>=7", "ruff>=0.1", "pytest-cov>=4"]
+# hypothesis is not optional here: tests/test_properties.py imports it at module
+# level, so without it the whole module fails to collect and the suite is red.
+dev = ["pytest>=7", "ruff>=0.1", "pytest-cov>=4", "hypothesis>=6.80"]
 # Rebuilding the executed tutorial and the figures in docs/. Separate from `dev` because
 # the test suite does not need a Jupyter kernel, and separate from nothing at all, which
 # is what these were before: the notebook is advertised as reproducible, so the tools

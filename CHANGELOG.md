@@ -362,6 +362,12 @@ All notable changes to this project are documented here. The format is based on
   all. A test checks that the committed notebook is still the builder's — a notebook
   hand-edited in Jupyter and committed would otherwise be discarded silently by the next
   rebuild.
+- **An interrupted survey no longer leaves a planted bug behind.** The sources are put
+  back in a `finally`, which covers a normal exit and Ctrl-C but not the SIGTERM a job
+  runner or a background task sends — and that ends the process between writing a mutation
+  and undoing it, so the working tree keeps the bug with nothing to say where it came
+  from. SIGTERM is turned into the same interruption Ctrl-C raises. Checked by doing it:
+  the file is mutated, the signal is sent, and `git status` comes back clean.
 - **The survey could not tell a mutation from a suite that was already failing.** A
   mutation is judged caught by the suite failing, so a suite already red fails for every
   one of them — every mutant reported as caught, the equivalent ones included, and the

@@ -42,6 +42,8 @@ where the suite caught it on the next run.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -443,7 +445,23 @@ def baseline_is_green() -> bool:
     return False
 
 
+def _restore_on_sigterm() -> None:
+    """Turn a termination signal into an exception so the sources are put back.
+
+    The restore below runs in a ``finally``, which covers a normal exit and Ctrl-C — but
+    not the SIGTERM a job runner or a background task sends. Left unhandled that ends the
+    process between writing a mutation and undoing it, and someone finds their working
+    tree carrying a planted bug with nothing to say where it came from.
+    """
+    def stop(signum, _frame):
+        raise KeyboardInterrupt(f"terminated by signal {signum}")
+
+    with contextlib.suppress(ValueError):  # not the main thread
+        signal.signal(signal.SIGTERM, stop)
+
+
 def survey(mutations, quiet: bool) -> int:
+    _restore_on_sigterm()
     originals = {m[0]: (SRC / f"{m[0]}.py").read_text() for m in mutations}
     surprises = []
     try:

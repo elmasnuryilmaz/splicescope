@@ -402,6 +402,15 @@ All notable changes to this project are documented here. The format is based on
   same test requires the README and `CONTRIBUTING.md` to offer at least what CI installs
   — otherwise the first thing a reader meets after following the install line is a
   failure CI never shows them.
+- **A test asserted a SciPy version's answer rather than the invariant.** For a unit with
+  no variation at all, `mannwhitneyu` returns exactly 1.0 on most versions and refuses the
+  degenerate case on others; the test pinned 1.0 and CI's 3.12 and 3.13 jobs disagreed
+  with everything else. It asserts what is actually true — that neither answer can ever be
+  called significant — and the same overstatement is corrected in `diff`'s docstrings and
+  METHODS §5.5. The distinction matters more than it looks: where the rank test reports
+  nothing, Benjamini-Hochberg already leaves the unit out of the denominator and
+  `filter_invariant` has nothing left to remove, which is not true of the beta-binomial,
+  whose likelihood ratio is a real 1.0. Both branches are exercised locally now.
 - **Two of the new checks were themselves environment-dependent, and CI said so.** The
   README's test count is what a *full* install collects; `tests/test_dashboard.py` skips
   itself where the Streamlit extra is absent, and skipping happens at collection, so the

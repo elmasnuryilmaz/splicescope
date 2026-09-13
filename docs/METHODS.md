@@ -232,10 +232,12 @@ group counted, a unit whose control replicates genuinely vary at `s = 5` was est
 13.6 instead of 5.7, so `dispersion="per_unit_floor"` — which takes the *smaller* of the
 shared and per-unit values — stopped biting on exactly the units it exists for.
 
-**It still enters the correction.** Both tests return exactly 1.0 for such a unit
-whichever way the samples are labelled: the rank test has no ordering to work with, and
-the beta-binomial's two groups have the same pooled proportion, so the likelihood ratio
-is 1. It cannot be rejected at any threshold, yet it counts in the Benjamini–Hochberg
+**It still enters the correction.** Neither test finds evidence in such a unit whichever
+way the samples are labelled: the rank test has no ordering to work with, and the
+beta-binomial's two groups have the same pooled proportion, so the likelihood ratio is 1.
+The beta-binomial returns exactly 1.0; the rank test returns 1.0 on most SciPy versions
+and nothing at all on those that refuse the degenerate case. It cannot be rejected at any
+threshold, yet it counts in the Benjamini–Hochberg
 denominator, where it makes every other unit's q-value worse. On a 200-gene simulation
 48 % of the tested units were of this kind, costing a factor of 1.91 in q.
 

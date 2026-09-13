@@ -298,9 +298,11 @@ def _drop_invariant_units(
     """Set aside units whose Ψ is the same in every sample that measured it.
 
     Such a unit is not a test that came out negative — it is a test that could not be
-    run. Both tests return exactly 1.0 for it, whichever way the samples are labelled: a
+    run. Neither test finds any evidence in it, whichever way the samples are labelled: a
     rank test has no ordering to work with, and the beta-binomial's two groups have the
-    same pooled proportion, so the likelihood ratio is 1. It cannot be rejected at any
+    same pooled proportion, so the likelihood ratio is 1. The beta-binomial returns
+    exactly 1.0; the rank test returns 1.0 on most SciPy versions and nothing at all on
+    those that refuse the degenerate case. Either way it cannot be rejected at any
     threshold.
 
     Most of them are structural. A constitutive donor with one junction has Ψ ≡ 1 in
@@ -365,7 +367,7 @@ def differential_splicing(
         to 0.039. Reproduce with ``validation/dispersion_trade.py``.
 
     filter_invariant : set aside units whose Ψ is identical in every sample before
-        correcting for multiple testing. Both tests return exactly 1.0 for such a unit
+        correcting for multiple testing. Neither test finds evidence in such a unit
         whichever way the samples are labelled, so it cannot be rejected at any
         threshold — it is not a test that came out negative but one that could not be
         run. Most are structural: a constitutive donor with a single junction has Ψ ≡ 1

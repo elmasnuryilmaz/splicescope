@@ -369,7 +369,13 @@ def test_a_unit_that_cannot_vary_is_reported_as_untestable_and_can_be_set_aside(
     kept = differential_splicing(psi, groups, test="ranksum")
     stuck = kept[kept["start"] == 1000].iloc[0]
     assert len(kept) == 4 and stuck["delta_psi"] == 0.0
-    assert stuck["pvalue"] == 1.0, "the honest answer, and the largest one there is"
+    # Exactly 1.0 on most SciPy versions, missing on those that refuse a rank test with
+    # no ordering to work with. Both say the same thing and the difference is not this
+    # package's to fix, so the invariant is asserted rather than the value — which is
+    # what CI said when 3.12 and 3.13 disagreed with everything else.
+    assert pd.isna(stuck["pvalue"]) or stuck["pvalue"] == 1.0, (
+        f"no evidence either way, got {stuck['pvalue']}"
+    )
     # q = 0.5 is already absurdly lax, and it is still not called at it
     assert stuck["start"] not in set(significant(kept, q=0.5, min_delta=0.0)["start"])
 
@@ -390,9 +396,14 @@ def test_a_unit_that_cannot_vary_is_reported_as_untestable_and_can_be_set_aside(
     # the units that could be tested keep their p-values; only the correction moves
     merged = kept.merge(dropped, on=["chrom", "start", "end", "strand"], suffixes=("", "_f"))
     assert len(merged) == 3
-    assert np.allclose(merged["pvalue"], merged["pvalue_f"])
+    assert np.allclose(merged["pvalue"], merged["pvalue_f"], equal_nan=True)
     assert (merged["qvalue_f"] <= merged["qvalue"] + 1e-12).all(), "never worse"
-    assert merged["qvalue_f"].min() < merged["qvalue"].min(), "and better where it matters"
+    if stuck["pvalue"] == 1.0:
+        # There is only something to gain where the unit reached the correction at all.
+        # On a SciPy that reports nothing for it, Benjamini-Hochberg already leaves it
+        # out of the denominator and the filter has nothing left to remove — which is
+        # not true of the beta-binomial, whose likelihood ratio is a real 1.0.
+        assert merged["qvalue_f"].min() < merged["qvalue"].min(), "better where it counts"
 
 
 @pytest.mark.parametrize(

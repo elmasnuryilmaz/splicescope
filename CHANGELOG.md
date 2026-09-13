@@ -365,6 +365,14 @@ All notable changes to this project are documented here. The format is based on
   count-based runs move, by roughly a factor of two on the tutorial's data; the committed
   outputs are rebuilt.** Reproduce with `validation/invariant_units.py`; METHODS §5.5 and
   a test compare every figure.
+- **The per-unit estimator had the same inconsistency, where it costs protection.** A
+  unit switched fully on in the knockdown and varying in the control is the shape of a
+  real cryptic event. Counting the knockdown group's zero residuals diluted the control's
+  genuine looseness, so a unit whose replicates vary at `s = 5` was estimated at 13.6
+  instead of 5.7 — and since `dispersion="per_unit_floor"` takes the *smaller* of the
+  shared and per-unit values, the floor stopped biting on precisely the units it exists
+  for. The `dispersion_trade.py` figures are unchanged, because that simulation has no
+  group at a boundary.
 - **`differential_splicing(filter_invariant=True)`, off by default.** The same units also
   enter the Benjamini–Hochberg denominator, where they make every real unit's q-value
   worse though their own p-value is exactly 1 and no threshold could reject them: 48 % of

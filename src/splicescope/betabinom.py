@@ -265,14 +265,26 @@ def estimate_precision_per_unit(
         covered |= block_mask
         n_params += (total > 0).astype(float)
 
+    # Same exclusion as the shared estimator: a group with every read on one side has
+    # residuals of zero by construction and carries no information about dispersion, so
+    # it counts on neither side. Here it matters for the unit whose two groups disagree
+    # about it — switched fully on in the knockdown, varying in the control — which is
+    # the shape of a real cryptic event. Counted, the control's genuine looseness was
+    # diluted and the estimate came out 2.4x too high (13.6 against a true 5), so the
+    # floor stopped biting exactly where it is meant to.
+    informative = covered & (mu > 0.0) & (mu < 1.0)
+    n_params = np.zeros(k.shape[0])
+    for block in blocks:
+        n_params += (informative & block[None, :]).any(axis=1).astype(float)
+
     mu = np.clip(mu, _EPS, 1.0 - _EPS)
     variance = n * mu * (1.0 - mu)
     resid_sq = np.where(
-        covered & (variance > 0), (k - n * mu) ** 2 / np.maximum(variance, _EPS), 0.0
+        informative & (variance > 0), (k - n * mu) ** 2 / np.maximum(variance, _EPS), 0.0
     )
 
     pearson = resid_sq.sum(axis=1)
-    n_total = covered.sum(axis=1).astype(float)
+    n_total = informative.sum(axis=1).astype(float)
     df = n_total - n_params
 
     out = np.full(k.shape[0], max_precision)
@@ -282,7 +294,7 @@ def estimate_precision_per_unit(
     excess = corrected - n_total
     ok &= excess > 0
 
-    trials_excess = np.where(covered, n - 1.0, 0.0).sum(axis=1)
+    trials_excess = np.where(informative, n - 1.0, 0.0).sum(axis=1)
     estimate = np.zeros_like(excess)
     np.divide(trials_excess, excess, out=estimate, where=ok)
     out = np.where(ok, np.clip(estimate - 1.0, min_precision, max_precision), out)

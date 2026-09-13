@@ -217,7 +217,11 @@ it. Such groups are now excluded from both sides of the estimator, which removes
 effect entirely: the estimate is 50.6 and the rate 0.049 whether they are present or not.
 The exclusion is **per group**, not per unit — a junction switched fully on in the
 knockdown and varying in the control still contributes what the control's replicates do,
-and that is the shape of a real cryptic event.
+and that is the shape of a real cryptic event. `estimate_precision_per_unit` had the same
+inconsistency, where it costs protection rather than calibration: with the knockdown
+group counted, a unit whose control replicates genuinely vary at `s = 5` was estimated at
+13.6 instead of 5.7, so `dispersion="per_unit_floor"` — which takes the *smaller* of the
+shared and per-unit values — stopped biting on exactly the units it exists for.
 
 **It still enters the correction.** Both tests return exactly 1.0 for such a unit
 whichever way the samples are labelled: the rank test has no ordering to work with, and

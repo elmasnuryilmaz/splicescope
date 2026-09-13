@@ -334,3 +334,36 @@ def test_a_group_pinned_to_one_boundary_still_contributes_its_other_group():
 
     assert 40 < s < 65, f"group A's variability is still measured, got {s}"
     assert s == pytest.approx(baseline, rel=0.35)
+
+
+def test_the_per_unit_floor_still_sees_a_loose_unit_when_one_group_is_switched_fully_on():
+    """The same exclusion, in the estimator that protects against heterogeneity.
+
+    A unit switched fully on in the knockdown and varying in the control is the shape of
+    a real cryptic event. Its knockdown group has every read on one junction, so that
+    group's residuals are zero by construction — and counting them diluted the control's
+    genuine looseness, pushing the per-unit estimate up. Since the floor takes the
+    *smaller* of the shared and per-unit values, an inflated per-unit estimate means the
+    floor stops biting, and the protection is lost exactly where it is wanted.
+    """
+    from splicescope.betabinom import estimate_precision_per_unit
+
+    k, n, mask, group_a = _beta_binomial_null(np.full(1500, 5.0), seed=2)
+    groups = [group_a, ~group_a]
+
+    varying = estimate_precision_per_unit(k, n, mask, groups=groups)
+    switched = k.copy()
+    switched[:, ~group_a] = n[:, ~group_a]
+    half_on = estimate_precision_per_unit(switched, n, mask, groups=groups)
+
+    def median_estimate(values):
+        finite = values[values < 1e5]
+        assert len(finite) > len(values) // 2, "most units must be estimable"
+        return float(np.median(finite))
+
+    loose, still_loose = median_estimate(varying), median_estimate(half_on)
+    assert 3 < loose < 9, f"both groups varying recovers s near 5, got {loose}"
+    assert still_loose < 2 * loose, (
+        f"switching one group fully on moved the estimate from {loose} to {still_loose}; "
+        f"the control's replicates still vary as much as they did"
+    )

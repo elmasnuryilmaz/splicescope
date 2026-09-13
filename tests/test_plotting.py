@@ -181,3 +181,60 @@ def test_event_psi_ignores_a_sample_the_design_does_not_name():
     )
     assert 0.9 not in set(np.round(drawn, 6)), "the unnamed sample was plotted anyway"
     plt.close(fig)
+
+
+def test_every_plot_makes_its_own_figure_when_given_no_axis():
+    """`ax=None` is the default and so the first thing anyone calls, and for two of these
+    it had never run. The figure it creates is reachable through `ax.figure`, which is how
+    a caller saves or closes it — `savefig` takes a figure, not an axis — so that is what
+    this checks rather than merely that nothing raised.
+    """
+    import matplotlib.pyplot as plt
+
+    from splicescope.consequence import CONSEQUENCE_CLASSES
+
+    diff = pd.DataFrame(
+        {
+            "chrom": ["chr1"] * 4, "start": [10, 20, 30, 40], "end": [90, 80, 70, 60],
+            "strand": ["+"] * 4, "sclass": ["cryptic"] * 4,
+            "delta_psi": [0.4, -0.3, 0.02, 0.5], "qvalue": [1e-8, 1e-3, 0.9, 1e-12],
+            "event_type": ["SE", "MXE", "A5SS", "A3SS"],
+        }
+    )
+    calls = {
+        "plot_annotation_summary": (
+            pd.DataFrame({"sclass": ["annotated", "cryptic"], "n_junctions": [7, 3]}),
+        ),
+        "plot_volcano": (diff,),
+        "plot_event_summary": (pd.DataFrame({"event_type": ["SE", "SE", "MXE"]}),),
+        "plot_event_volcano": (diff.assign(event_id=["a", "b", "c", "d"]),),
+        "plot_importance": (
+            pd.DataFrame({"feature": ["a", "b"], "importance": [0.6, 0.4],
+                          "std": [0.05, 0.04]}),
+        ),
+        "plot_consequence_summary": (
+            pd.DataFrame({"consequence_class": list(CONSEQUENCE_CLASSES)[:3]}),
+        ),
+        "plot_event_psi": (
+            pd.DataFrame({"event_id": ["e"] * 4, "sample": ["c1", "c2", "k1", "k2"],
+                          "psi": [0.2, 0.25, 0.7, 0.75]}),
+            {"c1": "ctrl", "c2": "ctrl", "k1": "kd", "k2": "kd"},
+        ),
+        "plot_enrichment": (
+            pd.DataFrame({"term": ["t1", "t2"], "qvalue": [1e-4, 1e-2],
+                          "overlap": [3, 2], "set_size": [10, 8]}),
+        ),
+        "plot_roc": (np.array([0, 0, 1, 1]), np.array([0.1, 0.4, 0.6, 0.9])),
+    }
+    assert set(calls) == {n for n in dir(plotting) if n.startswith("plot_")}, (
+        "a plot function was added or renamed and is not exercised here"
+    )
+
+    for name, args in calls.items():
+        before = set(plt.get_fignums())
+        ax = getattr(plotting, name)(*args)
+        made = set(plt.get_fignums()) - before
+        assert len(made) == 1, f"{name} should create exactly one figure, made {len(made)}"
+        assert ax.figure.number in made, f"{name}'s axis must belong to the figure it made"
+        assert ax.get_children(), f"{name} drew nothing"
+        plt.close(ax.figure)

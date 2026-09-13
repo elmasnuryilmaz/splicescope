@@ -342,8 +342,13 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
      '            "hyperparameters": self._hyperparameters(),',
      '            "hyperparameters": {"class_weight": "balanced"},', "caught"),
     ("ml", "score table sorted least-likely first",
-     'return out.sort_values("cryptic_score", ascending=False)[',
-     'return out.sort_values("cryptic_score", ascending=True)[', "caught"),
+     "        return out.sort_values(order, ascending=[False] + [True] * (len(order) - 1))[",
+     "        return out.sort_values(order, ascending=[True] + [True] * (len(order) - 1))[",
+     "caught"),
+    ("ml", "score ties left to the order the rows arrived in",
+     '        order = ["cryptic_score"] + '
+     '[c for c in ("chrom", "start", "end", "strand") if c in out]',
+     '        order = ["cryptic_score"]', "caught"),
     ("ml", "a single-class label vector accepted",
      "        _require_two_classes(y)\n", "", "caught"),
     # ---- demo: the analysis the dashboard runs --------------------------------------

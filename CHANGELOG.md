@@ -327,6 +327,16 @@ All notable changes to this project are documented here. The format is based on
   before it failed none.
 
 ### Fixed
+- **The cryptic score table left its ties in whatever order the rows arrived in.** A
+  forest that is certain gives several junctions exactly the same score, and sorting on
+  the score alone decided nothing about their order — so the top of the table, which is
+  what a reader looks at and what the tutorial prints, moved between runs and between
+  machines. Ties break on the coordinates now. CI found it: the tutorial check below
+  disagreed with the committed notebook on row order alone.
+- **Every plot function is called the way a user calls it first.** `ax=None` is the
+  default, and for two of the nine that path had never run. The test also checks that the
+  figure each one creates is reachable through `ax.figure`, which is how a caller saves or
+  closes it, since `savefig` takes a figure rather than an axis.
 - **CI runs the tutorial and fails if it no longer prints what the code prints.** The
   test added with the entry below compares the notebook's *cells* against its builder,
   which catches a notebook hand-edited in Jupyter but not a change to the analysis: the
@@ -335,8 +345,12 @@ All notable changes to this project are documented here. The format is based on
   compares what it printed, and a job runs it on every push. Only the text is compared —
   the embedded figures are PNGs whose bytes depend on the platform's font rendering, so a
   laptop and a CI runner would differ for no reason worth failing over, and the figures
-  are listed in `CONTRIBUTING.md` to rebuild by hand instead. Verified by planting the
-  very number that drifted: the check reports it and exits 1.
+  are listed in `CONTRIBUTING.md` to rebuild by hand instead. Counts are compared exactly
+  and every other number to two significant figures: scikit-learn 1.9 here and whatever
+  the runner resolves give a cross-validated ROC-AUC of 0.8390 and 0.8384, which is a
+  different build rather than a different analysis. Two figures still reports a real move
+  — the dispersion correction took the smallest p-value from 1.2e-53 to 2.4e-53. Verified
+  by planting the very number that drifted: the check reports it and exits 1.
 - **Rebuilding the tutorial is now a meaningful check.** `examples/tutorial.ipynb`
   ships its executed outputs, which are a claim about what the current code does — but
   the claim was not checkable, because every rebuild rewrote 24 random cell ids and four

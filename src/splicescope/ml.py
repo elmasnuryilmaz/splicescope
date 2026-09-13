@@ -152,12 +152,20 @@ class CrypticClassifier:
         return self.pipeline.predict_proba(x)[:, 1]
 
     def score_table(self, feats: pd.DataFrame) -> pd.DataFrame:
-        """Return junctions with a ``cryptic_score`` column, most-likely first."""
+        """Return junctions with a ``cryptic_score`` column, most-likely first.
+
+        Scores tie readily — a forest that is certain gives several junctions exactly
+        1.0 — and sorting on the score alone left their order to whatever the input order
+        happened to be. The top of this table is what a reader looks at, and a table whose
+        rows move between runs for no reason is one they cannot cite. Ties break on the
+        coordinates.
+        """
         out = feats.copy()
         out["cryptic_score"] = self.predict_proba(feats)
         cols = ["chrom", "start", "end", "strand", "gene_id", "sclass", "cryptic_score"]
         cols = [c for c in cols if c in out.columns]
-        return out.sort_values("cryptic_score", ascending=False)[
+        order = ["cryptic_score"] + [c for c in ("chrom", "start", "end", "strand") if c in out]
+        return out.sort_values(order, ascending=[False] + [True] * (len(order) - 1))[
             cols + [c for c in out.columns if c not in cols]
         ].reset_index(drop=True)
 

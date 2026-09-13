@@ -170,3 +170,41 @@ def test_scoring_before_fitting_says_so_rather_than_failing_inside_sklearn():
     for call in (clf.predict_proba, clf.score_table):
         with pytest.raises(RuntimeError, match="call fit"):
             call(feats)
+
+
+def test_the_score_table_orders_its_ties_the_same_way_every_time():
+    """A forest that is certain gives many junctions exactly the same score, and sorting
+    on the score alone left those rows in whatever order they arrived in. The top of this
+    table is what a reader looks at and what the tutorial prints, so an order that moves
+    between runs — or between one machine and another — is one they cannot cite.
+
+    The fixture gives ten junctions one feature vector and ten another, so each block of
+    ten scores identically and only the tie-break decides their order.
+    """
+    import numpy as np
+    import pandas as pd
+
+    from splicescope.cryptic import FEATURE_COLUMNS
+    from splicescope.ml import CrypticClassifier
+
+    rng = np.random.default_rng(0)
+    cryptic = {c: 2.0 for c in FEATURE_COLUMNS}
+    noise = {c: -2.0 for c in FEATURE_COLUMNS}
+    feats = pd.DataFrame([cryptic] * 10 + [noise] * 10)
+    feats["chrom"] = ["chr1"] * 20
+    feats["start"] = rng.permutation(np.arange(1000, 1000 + 20 * 10, 10))
+    feats["end"] = feats["start"] + 100
+    feats["strand"] = ["+"] * 20
+    feats["is_cryptic_truth"] = [1] * 10 + [0] * 10
+
+    clf = CrypticClassifier(random_state=0).fit(feats)
+    ordered = clf.score_table(feats)
+    assert ordered["cryptic_score"].value_counts().max() >= 10, "the case this is about"
+
+    shuffled = clf.score_table(feats.sample(frac=1.0, random_state=7).reset_index(drop=True))
+    assert list(ordered["start"]) == list(shuffled["start"]), (
+        "the same junctions in the same order, whichever order they were given in"
+    )
+    # and within one score, the coordinates rise
+    for _, block in ordered.groupby("cryptic_score", sort=False):
+        assert list(block["start"]) == sorted(block["start"]), "ties break on coordinates"

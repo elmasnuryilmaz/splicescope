@@ -752,3 +752,19 @@ def test_event_coordinates_are_written_as_positions_not_as_measurements():
     se = evs[evs["event_type"] == "SE"].iloc[0]
     assert int(se.exon_end) - int(se.exon_start) > 0
     assert pd.isna(se.site_pos), "an SE has no alternative splice site"
+
+
+def test_an_alternative_site_detector_is_asked_for_one_of_the_two_kinds():
+    """`detect_alt_ss_events` mirrors itself around which end of the intron varies, so a
+    third value has no meaning and cannot be defaulted to either one. It is the kind of
+    argument a caller gets wrong by typing `"A5"`."""
+    import pytest
+
+    from splicescope.events import detect_alt_ss_events
+
+    frame = _annotated_with_a_cassette_and_an_alt_site()
+    for kind in ("A5SS", "A3SS"):
+        detect_alt_ss_events(frame, kind)          # both are accepted
+    for wrong in ("A5", "a5ss", "SE", ""):
+        with pytest.raises(ValueError, match="A5SS"):
+            detect_alt_ss_events(frame, wrong)

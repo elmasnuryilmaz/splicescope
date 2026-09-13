@@ -18,6 +18,7 @@ a CI runner for no reason worth failing over.
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -271,6 +272,22 @@ def _make_reproducible(nb: nbformat.NotebookNode) -> None:
         cell.get("metadata", {}).pop("execution", None)
 
 
+#: A number with a decimal point, in plain or scientific notation.
+_FLOAT = re.compile(r"\d+\.\d+(?:[eE][-+]?\d+)?")
+
+
+def _rounded(text: str) -> str:
+    """Every non-integer rounded to two significant figures.
+
+    Counts are what this check is for and they stay exact. Metrics are not: scikit-learn
+    1.9 on this laptop and whatever the runner resolves give a cross-validated ROC-AUC of
+    0.8390 and 0.8384, which is a different build rather than a different analysis and is
+    not worth failing over. Two figures keeps the p-values honest, though — the dispersion
+    correction moved the smallest from 1.2e-53 to 2.4e-53, which this still reports.
+    """
+    return _FLOAT.sub(lambda m: f"{float(m.group()):.2g}", text)
+
+
 def _text_outputs(nb) -> list[str]:
     """Everything the notebook printed, in order, with the figures left out."""
     printed = []
@@ -279,7 +296,7 @@ def _text_outputs(nb) -> list[str]:
             data = output.get("data", {})
             text = "".join(output.get("text", [])) or "".join(data.get("text/plain", []))
             if text and not text.startswith("<Figure size"):
-                printed.append(f"cell {index}:\n{text.rstrip()}")
+                printed.append(f"cell {index}:\n{_rounded(text.rstrip())}")
     return printed
 
 

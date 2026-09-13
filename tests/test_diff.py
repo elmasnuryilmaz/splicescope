@@ -437,3 +437,26 @@ def test_more_than_two_conditions_is_refused_and_the_message_names_them():
         differential_splicing(psi, groups)
     for condition in ("ctrl", "low", "high"):
         assert condition in str(excinfo.value), "say which conditions were found"
+
+
+def test_the_invariant_filter_leaves_a_table_with_nothing_to_drop_alone():
+    """The ordinary case for a table of alternative splice sites, where every unit varies.
+    The filter must then be a no-op in both senses: the same rows, and no warning — one
+    that fired on a run it changed nothing about would be noise, and noise is how people
+    learn to ignore warnings."""
+    import warnings
+
+    from splicescope.diff import _drop_invariant_units, differential_splicing
+
+    psi = _counts_table(n_units=5).drop(columns=["count", "donor_total"])
+    key = ["chrom", "start", "end", "strand"]
+    kept, set_aside = _drop_invariant_units(psi, key, "psi_donor")
+    assert set_aside == 0 and kept is psi, "not even a copy is made"
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        filtered = differential_splicing(psi, _groups(psi), test="ranksum",
+                                         filter_invariant=True)
+    plain = differential_splicing(psi, _groups(psi), test="ranksum")
+    assert len(filtered) == len(plain) == 5
+    assert np.allclose(filtered["qvalue"], plain["qvalue"])

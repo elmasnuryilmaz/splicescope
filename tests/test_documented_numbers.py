@@ -375,3 +375,37 @@ def test_the_thresholds_written_down_are_the_ones_that_are_applied():
                        methods)
     assert stated, "METHODS no longer states the defaults"
     assert float(stated.group(1)) == q and float(stated.group(2)) == min_delta
+
+
+def test_the_reproducing_guide_counts_what_the_repository_contains():
+    """`docs/REPRODUCING.md` tells a reader what to expect from each command, which makes
+    its numbers exactly the kind that rot — the kind this file exists for. The counts it
+    quotes are checked against the same sources as the README's, and every command it
+    gives has to name a file that is there.
+    """
+    import re
+
+    guide = (ROOT / "docs" / "REPRODUCING.md").read_text()
+    survey = _load("mutation_survey")
+
+    mutations = len(survey.MUTATIONS)
+    assert f"**{mutations} mutations**" in guide, f"the survey holds {mutations}"
+    assert f"{mutations} mutations, 0 surprise(s)" in guide, "and that is what it prints"
+
+    equivalent = sum(1 for m in survey.MUTATIONS if m[4] == "equivalent")
+    spelled = {1: "One", 2: "Two", 3: "Three", 4: "Four"}[equivalent]
+    assert f"{spelled} mutations are *expected* to survive" in guide or (
+        f"{spelled.lower()} mutations are *expected* to survive" in guide
+    ), f"{equivalent} are expected to survive"
+
+    properties = sum(
+        1 for line in (ROOT / "tests" / "test_properties.py").read_text().splitlines()
+        if line.startswith("def test_")
+    )
+    assert f"**{properties} tests**" in guide, f"test_properties.py holds {properties}"
+
+    # every script and workflow it tells the reader to run has to exist
+    referenced = set(re.findall(r"(?:python|pytest) ([\w/]+\.(?:py|yml))", guide))
+    missing = [p for p in referenced if not (ROOT / p).exists()]
+    assert not missing, f"the guide names files that are not there: {missing}"
+    assert len(referenced) >= 8, f"only {len(referenced)} scripts referenced, expected more"

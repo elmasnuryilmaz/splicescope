@@ -156,6 +156,9 @@ rather than only asserted.
 > **Formal definitions** — the Ψ metric, the differential-splicing statistics, the
 > classifier's leakage-free evaluation protocol and the simulation model are all
 > specified in **[docs/METHODS.md](docs/METHODS.md)**.
+>
+> **Reproducing any of it** — every claim here, the command that checks it, and what the
+> auditing found, in **[docs/REPRODUCING.md](docs/REPRODUCING.md)**.
 
 ## Scaling & exploring
 
@@ -179,7 +182,7 @@ rather than only asserted.
 ## Testing
 
 ```bash
-pytest            # 360 tests: unit + property-based + end-to-end CLI runs
+pytest            # 361 tests: unit + property-based + end-to-end CLI runs
 ruff check .      # lint
 pytest --cov=splicescope   # 98 % of statements; CI fails below 90 %
 ```

@@ -36,6 +36,10 @@ Behaviour worth having a test is usually worth a line in
 code one line at a time and reports anything the suite fails to notice. It runs weekly in
 CI and takes about an hour locally, so `--module <name>` is the usual way to run it.
 
+[`docs/REPRODUCING.md`](docs/REPRODUCING.md) is the map of what is checked and by what —
+read it before adding a number to the documentation, because most of them are pinned to
+the thing they describe and a new one probably should be.
+
 ## Guidelines
 
 - Keep functions pure and testable where possible; every new behaviour needs a test.

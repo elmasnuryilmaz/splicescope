@@ -11,6 +11,7 @@ the command line while the model card told every reader to retrain on curated la
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -333,3 +334,53 @@ def test_an_events_table_with_no_cassette_exon_is_refused_not_answered(
     assert "every row leaves them empty" in error
     assert "A3SS" in error or "A5SS" in error, "say what the file does hold"
     assert str(len(alt_only)) in error, "and how much of it"
+
+
+def test_the_readme_s_count_of_excluded_shift_candidates_is_the_one_it_gets(tmp_path):
+    """The README says how many candidate splice-site shifts the event exclusion removes
+    "on the built-in demo". It said 12 of 31 and the answer is 14 of 31 — the denominator
+    held while the numerator drifted, which is the shape a number takes when nothing
+    recomputes it. This writes the dataset `splicescope simulate` writes, with its own
+    defaults, and counts.
+    """
+    from splicescope import annotate, events
+    from splicescope.cli import SHIFT_CLASSES, _event_junctions, _junction_index
+    from splicescope.io import read_gtf_junctions, read_many_star_sj
+
+    data = tmp_path / "demo_data"
+    assert main(["simulate", "--outdir", str(data)]) == 0
+
+    sj = {p.name.split(".")[0]: p for p in sorted((data / "sj").glob("*"))}
+    annotated = annotate.annotate_junctions(
+        read_many_star_sj(sj), read_gtf_junctions(data / "annotation.gtf")
+    )
+    detected = events.detect_events(annotated)
+    candidates = annotated[annotated["sclass"].isin(SHIFT_CLASSES)].drop_duplicates(
+        subset=["chrom", "start", "end", "strand"]
+    )
+    kept = candidates[~_junction_index(candidates).isin(_event_junctions(detected))]
+    removed, total = len(candidates) - len(kept), len(candidates)
+
+    root = Path(__file__).resolve().parent.parent
+    readme = (root / "README.md").read_text()
+    assert f"removes {removed} of {total} candidate junctions" in readme, (
+        f"the exclusion removes {removed} of {total} on the demo the README names"
+    )
+
+
+def test_the_coverage_floor_the_readme_quotes_is_the_one_ci_enforces():
+    """The README tells a reader CI fails below a coverage floor. That floor lives in the
+    workflow, and the two were free to disagree."""
+    import re
+
+    root = Path(__file__).resolve().parent.parent
+    workflow = (root / ".github" / "workflows" / "ci.yml").read_text()
+    enforced = re.search(r"--cov-fail-under=(\d+)", workflow)
+    assert enforced, "CI no longer enforces a coverage floor"
+
+    readme = (root / "README.md").read_text()
+    quoted = re.search(r"CI fails below (\d+) ?%", readme)
+    assert quoted, "the README no longer quotes one"
+    assert quoted.group(1) == enforced.group(1), (
+        f"the README says {quoted.group(1)} %, CI enforces {enforced.group(1)} %"
+    )

@@ -381,6 +381,22 @@ All notable changes to this project are documented here. The format is based on
   final exon, a codon straddling the junction before it, and no junction at all. The
   mutation that used to pin the exception became equivalent, which is how the overlap
   surfaced; it is replaced by two that pin the single rule on both paths.
+- **Two more numbers in the README that nothing recomputed.** It said the event exclusion
+  removes "12 of 31 candidate junctions" on the built-in demo; the demo gives 14 of 31 —
+  the denominator held while the numerator drifted, which is the shape a number takes when
+  nothing checks it. A test writes the dataset `splicescope simulate` writes and counts. It
+  also quotes the coverage floor CI enforces, which lived in the workflow and was free to
+  disagree; that pair is checked too. The one figure with no reproducer left — 43 % against
+  20 % of events without a host intron on `basic` versus full GENCODE — now says it was
+  measured once on the real run rather than by anything here.
+- **`diff.py` decided which units are reported and had fewer mutations per line than
+  `plotting`.** Its statistics live in `betabinom`; these are the thresholds around them —
+  `min_samples` applied to both tests and required in both groups, and `significant`'s two
+  conditions, which produce the "N significant junctions" every report opens with.
+- **The thresholds the CLI prints are the ones it filtered on.** `splicescope run` printed
+  `q<=0.05, |ΔΨ|>=0.1` as literals while calling `significant` with its defaults, and
+  METHODS states the same pair in prose. Three places, one fact, and nothing tied them
+  together.
 - **The README stated the real-data counts without the caveat that sits behind its own
   link.** 4,699 differentially spliced events and the eight recovered genes were measured
   with 0.8.1, and three defects in the differential path have been fixed since — each

@@ -174,6 +174,24 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
      "        n_params += (informative & block[None, :]).any(axis=1).astype(float)",
      "        n_params += informative.any(axis=1).astype(float)", "caught"),
     # ---- diff ---------------------------------------------------------------------
+    # `diff.py` is the module that decides which units are reported at all, and had
+    # fewer mutations per line than `plotting`. Its statistics live in `betabinom`; these
+    # are the thresholds around them.
+    ("diff", "a unit with exactly min_samples replicates dropped (count model)",
+     "    keep = (n_a >= min_samples) & (n_b >= min_samples)",
+     "    keep = (n_a > min_samples) & (n_b > min_samples)", "caught"),
+    ("diff", "a unit with exactly min_samples replicates dropped (rank test)",
+     "        if len(a) < min_samples or len(b) < min_samples:",
+     "        if len(a) <= min_samples or len(b) <= min_samples:", "caught"),
+    ("diff", "min_samples required in either group rather than both",
+     "    keep = (n_a >= min_samples) & (n_b >= min_samples)",
+     "    keep = (n_a >= min_samples) | (n_b >= min_samples)", "caught"),
+    ("diff", "significance needs only one of the two thresholds",
+     'return diff[(diff["qvalue"] <= q) & (diff["abs_delta_psi"] >= min_delta)]',
+     'return diff[(diff["qvalue"] <= q) | (diff["abs_delta_psi"] >= min_delta)]', "caught"),
+    ("diff", "the effect-size threshold read as an upper bound",
+     'return diff[(diff["qvalue"] <= q) & (diff["abs_delta_psi"] >= min_delta)]',
+     'return diff[(diff["qvalue"] <= q) & (diff["abs_delta_psi"] <= min_delta)]', "caught"),
     ("diff", "Psi pivoted by sum instead of mean", 'aggfunc="mean"', 'aggfunc="sum"',
      "caught"),
     ("diff", "raw p-values reported as q-values",

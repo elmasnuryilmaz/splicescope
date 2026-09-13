@@ -343,3 +343,35 @@ def test_every_mutation_still_has_something_to_break():
             ast.parse(mutated)
         except SyntaxError as exc:  # pragma: no cover - only on a broken mutation
             raise AssertionError(f"{module}: {label!r} does not parse: {exc}") from exc
+
+
+def test_the_thresholds_written_down_are_the_ones_that_are_applied():
+    """`splicescope run` prints "q<=0.05, |ΔΨ|>=0.1" while calling `significant` with its
+    defaults, and METHODS states the same pair in prose. Three places, one fact: change
+    the defaults and the line the user reads goes on describing a filter that is no longer
+    the one applied — and it is the line that tells them how many junctions were called.
+    """
+    import inspect
+    import re
+
+    from splicescope.diff import significant
+
+    defaults = inspect.signature(significant).parameters
+    q = defaults["q"].default
+    min_delta = defaults["min_delta"].default
+    assert 0 < q < 1 and 0 < min_delta < 1, "sanity, before anything is matched against them"
+
+    cli = (ROOT / "src" / "splicescope" / "cli.py").read_text()
+    printed = re.findall(r"\(q<=([\d.]+), \|ΔΨ\|>=([\d.]+)\)", cli)
+    assert printed, "the run command no longer prints the thresholds it filtered on"
+    for shown_q, shown_delta in printed:
+        assert float(shown_q) == q and float(shown_delta) == min_delta, (
+            f"the CLI says q<={shown_q}, |ΔΨ|>={shown_delta}; "
+            f"`significant` defaults to q<={q}, |ΔΨ|>={min_delta}"
+        )
+
+    methods = (ROOT / "docs" / "METHODS.md").read_text()
+    stated = re.search(r'"Significant" defaults to `q ≤ ([\d.]+)` and `\|ΔΨ\| ≥ ([\d.]+)`',
+                       methods)
+    assert stated, "METHODS no longer states the defaults"
+    assert float(stated.group(1)) == q and float(stated.group(2)) == min_delta

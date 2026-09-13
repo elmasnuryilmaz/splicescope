@@ -179,7 +179,7 @@ rather than only asserted.
 ## Testing
 
 ```bash
-pytest            # 351 tests: unit + property-based + end-to-end CLI runs
+pytest            # 354 tests: unit + property-based + end-to-end CLI runs
 ruff check .      # lint
 pytest --cov=splicescope   # 98 % of statements; CI fails below 90 %
 ```
@@ -200,7 +200,7 @@ columns it could not index — and sweeping the rest of the package for that sam
 turned up three more of it.
 
 A green suite says the tests pass, not that they would fail if the code broke. So the
-code is deliberately broken 117 ways and the suite has to notice:
+code is deliberately broken 122 ways and the suite has to notice:
 
 ```bash
 python validation/mutation_survey.py
@@ -274,10 +274,12 @@ the PTC offset and its distance to the last exon-exon junction.
 A junction already explained by a detected cassette or MXE event is *not* also reported as
 a splice-site shift: on its own, a cassette inclusion junction reads as an exon extension
 running to the end of the intron, which is the wrong interpretation of it. On the built-in
-demo that exclusion removes 12 of 31 candidate junctions.
+demo that exclusion removes 14 of 31 candidate junctions.
 
 > Use the **full** GENCODE annotation, not `basic`. The reduced set is missing transcripts
-> and leaves far more events without a host intron (43% vs 20% on the same 300 exons).
+> and leaves far more events without a host intron — 43 % against 20 % on the same 300
+> exons, measured once on the GSE245332 run rather than by anything in this repository,
+> so take it as a direction and not a figure.
 
 ## Notes & limitations
 

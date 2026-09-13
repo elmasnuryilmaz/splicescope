@@ -55,6 +55,14 @@ All notable changes to this project are documented here. The format is based on
   what the previous code produced.
 
 ### Added
+- **`docs/REPRODUCING.md`** — every claim in this repository, the command that checks it,
+  roughly how long that takes, and what you should see. Seven layers in order, weakest
+  claim first, and then the one that cannot run from a clean checkout, which says so
+  rather than pretending otherwise. It records the three defects the audit found alongside
+  the technique that found all three, and lists what is left to do kept apart from what is
+  deliberately not being done. Every command in it was run as written, and its own counts
+  are pinned to the suite and the survey — a reproducibility guide quoting a stale number
+  is the one document that cannot afford to.
 - **A test that the event-level comparison uses the read counts.**
   `differential_splicing(value="psi")` resolves its count columns by name, and the names
   it looks for are the ones `event_psi` happens to produce. Nothing checked that they

@@ -56,6 +56,19 @@ the outputs are unchanged apart from row order.
 > BH at 3 vs 3, the count model can, and the classifier ranks confidently replicating
 > events worse than the statistic does.
 >
+> A third change lands after those two and moves every count-based p-value on this
+> dataset: the shared dispersion estimate counted groups pinned at Ψ 0 or 1 in its
+> degrees of freedom while excluding them from its residual sum, which drove the
+> estimated precision up and narrowed the null. Constitutive splice sites are exactly
+> that shape and they dominate an annotation, so on 848,749 junctions the inflation was
+> far larger than the 17× a one-to-one simulation shows. The correction moves p-values
+> **up** — the null was too narrow, so the old numbers were anti-conservative — and by an
+> amount this section cannot state until it is re-run. The conclusion it rests on does
+> not move: the BH threshold for the top hit across 189,700 tests is about 2.6e-7 and the
+> smallest p above is ~1e-132, so there are more than 120 orders of magnitude of headroom,
+> and the rank-test floor is arithmetic rather than an estimate. The count
+> of significant junctions will fall. See METHODS §5.5.
+>
 > The consequence layer changed in 0.9.0 as well, so the NMD-sensitivity numbers below
 > need re-measuring too, though their labels are external and unaffected. Three
 > corrections move class assignments: an in-frame truncation is no longer called a PTC

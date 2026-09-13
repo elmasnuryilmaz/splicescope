@@ -365,6 +365,30 @@ All notable changes to this project are documented here. The format is based on
   count-based runs move, by roughly a factor of two on the tutorial's data; the committed
   outputs are rebuilt.** Reproduce with `validation/invariant_units.py`; METHODS §5.5 and
   a test compare every figure.
+- **A mutation that had quietly stopped applying, and a check so the next one does not.**
+  `describe` was fixed earlier in this cycle to handle a premature stop with no recorded
+  distance, which rewrote the line one of the 111 mutations replaces. The mutation then
+  matched nothing and silently stopped testing anything. The survey does report
+  `NOT APPLIED` — that is how it was found — but it runs weekly, so the rule went
+  unchecked in between. A test in the ordinary suite now verifies that every mutation's
+  target text matches exactly one place in its module, that it changes something, and
+  that the mutated source still parses; the stale mutation is replaced by two.
+- **The counts in the README are checked against what is there.** They rot faster than
+  anything else in the documentation and nothing noticed: it claimed the code was broken
+  85 ways when the survey held 111 mutations, 97 % coverage against 98 %, and fourteen
+  property-based tests against twenty. The collected-test total comes from a new
+  `tests/conftest.py` that records what pytest collected, so the check costs nothing and
+  skips on a partial run. It caught a stale test count on its first run.
+- **`METHODS` says what the simulator deliberately does not produce.** No simulated
+  junction is ever classified `novel_combination`, and a reader could reasonably take the
+  empty bar for a gap in the taxonomy. It is the model being faithful: a *cryptic* exon
+  is absent from the annotation, so the isoform skipping it **is** the annotated intron.
+  `novel_combination` arises from skipping an exon the annotation already has, which is
+  alternative splicing of a known cassette rather than a cryptic event. `annotate`
+  classifies both; only the simulator is narrower.
+- **`validation/README.md` records a third reason its numbers will move.** The dispersion
+  correction above changes every count-based p-value on that dataset, in the conservative
+  direction, by an amount that cannot be stated until it is re-run.
 - **A design can pass the replication check while the data hold nothing to estimate
   from.** `dispersion_is_estimable` is given no counts, so it can only weigh informative
   samples against fitted group means. A table of constitutive splice sites passes it with

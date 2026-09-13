@@ -24,7 +24,10 @@ from .io import donor_acceptor
 
 def _usage(df: pd.DataFrame, site_cols: list[str], min_reads: int) -> tuple[pd.Series, pd.Series]:
     """Return ``(usage, totals)``; the totals are the denominator Ψ was formed from."""
-    totals = df.groupby(site_cols + ["sample"])["count"].transform("sum")
+    # observed=True as everywhere else here: on pandas 2 and older the default builds
+    # the full product of every category level, which for a categorical `chrom` from a
+    # genome-wide annotation is a large table nothing reads.
+    totals = df.groupby(site_cols + ["sample"], observed=True)["count"].transform("sum")
     usage = df["count"] / totals
     usage[totals < min_reads] = np.nan
     return usage, totals

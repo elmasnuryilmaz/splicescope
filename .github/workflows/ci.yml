@@ -32,7 +32,7 @@ jobs:
         run: ruff check .
 
       - name: Test (pytest)
-        # A floor, not a target: it sits well under the 96 % the suite reaches, so it
+        # A floor, not a target: it sits well under the 98 % the suite reaches, so it
         # fires on a feature landing untested rather than on ordinary movement.
         run: pytest -q --cov=splicescope --cov-report=term-missing --cov-fail-under=90
 

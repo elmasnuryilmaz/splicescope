@@ -373,10 +373,20 @@ def test_a_unit_that_cannot_vary_is_reported_as_untestable_and_can_be_set_aside(
     # q = 0.5 is already absurdly lax, and it is still not called at it
     assert stuck["start"] not in set(significant(kept, q=0.5, min_delta=0.0)["start"])
 
+    # a unit taking exactly two values — one per group — is the clearest real difference
+    # there is, and the filter must never reach it
+    two_valued = psi["start"] == 1010
+    psi.loc[two_valued, "psi_donor"] = np.where(
+        psi.loc[two_valued, "sample"].str.startswith("C"), 0.4, 0.7
+    )
+    assert psi.loc[two_valued, "psi_donor"].nunique() == 2
+
     with pytest.warns(UserWarning, match="set aside"):
         dropped = differential_splicing(psi, groups, test="ranksum", filter_invariant=True)
 
+    kept = differential_splicing(psi, groups, test="ranksum")
     assert len(dropped) == 3 and 1000 not in set(dropped["start"])
+    assert 1010 in set(dropped["start"]), "two values is variation, not invariance"
     # the units that could be tested keep their p-values; only the correction moves
     merged = kept.merge(dropped, on=["chrom", "start", "end", "strand"], suffixes=("", "_f"))
     assert len(merged) == 3

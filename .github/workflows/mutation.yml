@@ -2,7 +2,7 @@ name: Mutation survey
 
 # Each mutation runs the whole suite, so this is far too slow for every push. It runs
 # weekly and on request instead. A "surprise" is a defect the suite failed to notice,
-# or one of the two documented equivalent mutants suddenly being caught.
+# or one of the three documented equivalent mutants suddenly being caught.
 on:
   schedule:
     - cron: "0 4 * * 1"
@@ -11,6 +11,9 @@ on:
 jobs:
   survey:
     runs-on: ubuntu-latest
+    # Each mutation runs the whole suite, so the job is long by design; this is a
+    # backstop against one that hangs, not a target.
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
 
@@ -24,5 +27,5 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
-      - name: Break the code 85 ways and check the suite notices
+      - name: Break the code 111 ways and check the suite notices
         run: python validation/mutation_survey.py

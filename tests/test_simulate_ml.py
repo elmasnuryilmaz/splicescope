@@ -131,3 +131,42 @@ def test_the_model_card_reports_the_model_that_was_actually_fitted():
 
     balanced = CrypticClassifier(n_estimators=50, random_state=0).fit(feats)
     assert balanced.model_card()["hyperparameters"]["class_weight"] == "balanced"
+
+
+def test_the_classifier_refuses_a_dataset_too_small_to_cross_validate():
+    """Coverage found this message had never been produced. It is the one a user meets
+    first on a small pilot dataset, so it has to say what is wrong and what would fix
+    it — a traceback out of scikit-learn would not."""
+    import pandas as pd
+    import pytest
+
+    from splicescope.cryptic import FEATURE_COLUMNS
+    from splicescope.ml import CrypticClassifier
+
+    feats = pd.DataFrame(
+        {c: [float(i) for i in range(12)] for c in FEATURE_COLUMNS}
+        | {"is_cryptic_truth": [1] + [0] * 11}
+    )
+    with pytest.raises(ValueError, match="at least 2 examples of each class") as excinfo:
+        CrypticClassifier().evaluate(feats)
+    assert "has 1" in str(excinfo.value), "say how many the rarer class has"
+
+    # two of the rarer class is enough to fold, and it says nothing
+    feats.loc[1, "is_cryptic_truth"] = 1
+    metrics = CrypticClassifier().evaluate(feats)
+    assert metrics["n_splits"] == 2 and metrics["n_positive"] == 2
+
+
+def test_scoring_before_fitting_says_so_rather_than_failing_inside_sklearn():
+    """`score_table` on an unfitted classifier used to reach `None.predict_proba`."""
+    import pandas as pd
+    import pytest
+
+    from splicescope.cryptic import FEATURE_COLUMNS
+    from splicescope.ml import CrypticClassifier
+
+    feats = pd.DataFrame({c: [1.0, 2.0] for c in FEATURE_COLUMNS})
+    clf = CrypticClassifier()
+    for call in (clf.predict_proba, clf.score_table):
+        with pytest.raises(RuntimeError, match="call fit"):
+            call(feats)

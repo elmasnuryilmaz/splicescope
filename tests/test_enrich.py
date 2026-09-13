@@ -580,3 +580,23 @@ def test_a_result_with_no_rows_still_has_the_columns_a_result_has():
         assert empty.to_csv(index=False).splitlines()[0] == (
             populated.to_csv(index=False).splitlines()[0]
         ), "same header, so a run that found nothing still writes a readable file"
+
+
+def test_enrichment_of_a_differential_table_with_no_rows_keeps_its_schema():
+    """The last of the empty-result paths: `enrich_differential` short-circuits a table
+    with no rows, or one carrying neither a gene id nor a gene name, straight to an empty
+    over-representation. It must come back with the columns a populated one has."""
+    from splicescope.enrich import RESULT_COLUMNS
+
+    columns = ["chrom", "start", "end", "strand", "gene_id", "qvalue", "delta_psi",
+               "abs_delta_psi"]
+    sets = {"S": ["ENSG00000000001", "ENSG00000000002"]}
+
+    no_rows = enrich_differential(pd.DataFrame(columns=columns), sets)
+    no_genes = enrich_differential(
+        pd.DataFrame({"chrom": ["chr1"], "qvalue": [1e-9], "delta_psi": [0.4],
+                      "abs_delta_psi": [0.4]}),
+        sets,
+    )
+    for frame in (no_rows, no_genes):
+        assert frame.empty and list(frame.columns) == RESULT_COLUMNS

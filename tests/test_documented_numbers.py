@@ -241,3 +241,90 @@ def test_the_invariant_unit_tables_match_the_script_that_produces_them():
     # the prose numbers, which drift just as readily as a table
     assert "48 %" in section and "1.91" in section
     assert str(int(values["true precision"])) in section
+
+
+def test_the_readme_counts_what_the_repository_actually_contains():
+    """Every number in the README that counts something here, checked against it.
+
+    These rot faster than anything else in the documentation and nothing noticed: the
+    README claimed the code was broken 85 ways when the survey held 111 mutations, and
+    97 % coverage when the suite reached 98 %. A reader has no way to tell a stale count
+    from a current one, and a count that is quietly wrong makes every other number in the
+    file worth less.
+
+    The collected-test total comes from `tests/conftest.py`, which records what pytest
+    collected, so this costs nothing. It is skipped on a partial run, where the number
+    would be meaningless.
+    """
+    import sys
+
+    # pytest has already imported it; the name depends on the import mode
+    conftest = sys.modules.get("conftest") or sys.modules.get("tests.conftest")
+
+    readme = (ROOT / "README.md").read_text()
+    survey = _load("mutation_survey")
+
+    mutations = len(survey.MUTATIONS)
+    assert f"broken {mutations} ways" in readme, f"the survey holds {mutations} mutations"
+
+    workflow = (ROOT / ".github" / "workflows" / "mutation.yml").read_text()
+    assert f"Break the code {mutations} ways" in workflow, "the CI step name too"
+
+    equivalent = sum(1 for m in survey.MUTATIONS if m[4] == "equivalent")
+    spelled = {2: "two", 3: "three", 4: "four", 5: "five"}[equivalent]
+    assert f"{spelled} documented equivalent mutants" in workflow
+    assert survey.__doc__.count("equivalent") >= 1
+
+    properties = sum(
+        1 for line in (ROOT / "tests" / "test_properties.py").read_text().splitlines()
+        if line.startswith("def test_")
+    )
+    spelled = {14: "Fourteen", 20: "Twenty", 21: "Twenty-one", 22: "Twenty-two"}.get(properties)
+    assert spelled and f"{spelled} of those are **property-based**" in readme, (
+        f"test_properties.py holds {properties} tests"
+    )
+
+    if conftest is not None and conftest.COLLECTED is not None:
+        assert f"# {conftest.COLLECTED} tests:" in readme, (
+            f"pytest collected {conftest.COLLECTED}"
+        )
+
+
+def test_every_mutation_still_has_something_to_break():
+    """A mutation whose target text has moved is a rule that has quietly stopped being
+    checked, and nothing said so for a week.
+
+    `describe` was fixed to handle a missing distance on the `ptc_nmd` branch, which
+    rewrote the line one mutation replaces. The survey does report `NOT APPLIED`, and
+    that is how it was found — but the survey runs weekly, so the rule went unchecked
+    until then. This is the same check, in the suite that runs on every push, and it
+    costs a few string searches.
+
+    It also rules out the quieter failure: a target that now matches more than once,
+    where the survey would rewrite two places and test something other than what its
+    label says.
+    """
+    survey = _load("mutation_survey")
+    src = ROOT / "src" / "splicescope"
+
+    sources = {name: (src / f"{name}.py").read_text() for name in
+               sorted({m[0] for m in survey.MUTATIONS})}
+    problems = []
+    for module, label, old, new, _expected in survey.MUTATIONS:
+        found = sources[module].count(old)
+        if found != 1:
+            problems.append(f"{module}: {label!r} matches {found} places, needs exactly 1")
+        if old == new:
+            problems.append(f"{module}: {label!r} does not change anything")
+    assert not problems, "\n  " + "\n  ".join(problems)
+
+    # and the mutated source still has to be importable, or "caught" means a SyntaxError
+    # rather than a test noticing anything
+    import ast
+
+    for module, label, old, new, _expected in survey.MUTATIONS:
+        mutated = sources[module].replace(old, new)
+        try:
+            ast.parse(mutated)
+        except SyntaxError as exc:  # pragma: no cover - only on a broken mutation
+            raise AssertionError(f"{module}: {label!r} does not parse: {exc}") from exc

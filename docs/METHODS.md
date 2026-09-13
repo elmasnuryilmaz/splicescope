@@ -417,6 +417,17 @@ genome and per-sample junctions:
 
 Generation is fully seeded and therefore reproducible.
 
+**What it deliberately does not produce.** No simulated junction is ever classified
+`novel_combination`, and the class is empty in every figure built from this model. That is
+the model being faithful to what it sets out to represent, not a gap in the taxonomy. A
+**cryptic** exon is absent from the annotation, so the isoform that skips it *is* the
+annotated intron: the two inclusion junctions are novel and the skipping junction is
+`annotated`. `novel_combination` — both sites annotated, the pairing not — arises from
+skipping an exon the annotation already contains, which is alternative splicing of a known
+cassette rather than a cryptic event, and this tool is aimed at the latter. Real data
+contain both, and `annotate` classifies both; only the simulator is narrower than the
+classifier, so the class is exercised by unit tests rather than by an end-to-end run.
+
 ## 8b. Protein consequence
 
 For a cassette exon the reading frame is inherited from the coding sequence upstream of

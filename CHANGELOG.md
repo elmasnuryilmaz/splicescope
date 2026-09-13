@@ -365,6 +365,21 @@ All notable changes to this project are documented here. The format is based on
   count-based runs move, by roughly a factor of two on the tutorial's data; the committed
   outputs are rebuilt.** Reproduce with `validation/invariant_units.py`; METHODS §5.5 and
   a test compare every figure.
+- **A design can pass the replication check while the data hold nothing to estimate
+  from.** `dispersion_is_estimable` is given no counts, so it can only weigh informative
+  samples against fitted group means. A table of constitutive splice sites passes it with
+  replicates to spare — every group is fully covered — and still leaves nothing to measure
+  dispersion from, because Ψ is 1 in every sample. The estimate then returned its ceiling,
+  asserting *no* overdispersion and narrowing the test to a binomial one, in silence: the
+  exact failure the design check exists to catch, reached past it. `dispersion_has_
+  information` asks the question of the counts, and `differential_splicing` warns on it.
+  It deliberately does not fire on data genuinely tighter than binomial, which reach the
+  same ceiling — that is a measurement, not the absence of one.
+- **The three dispersion routines now share one block of bookkeeping.** They each
+  computed the fitted group means, the coverage and the parameter count for themselves,
+  which is how the defect above survived: the residual sum excluded groups pinned at Ψ 0
+  or 1 and the degrees of freedom counted them, in two copies of what should have been
+  one piece of code.
 - **The per-unit estimator had the same inconsistency, where it costs protection.** A
   unit switched fully on in the knockdown and varying in the control is the shape of a
   real cryptic event. Counting the knockdown group's zero residuals diluted the control's

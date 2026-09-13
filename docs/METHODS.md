@@ -178,7 +178,16 @@ group means, there is no residual degree of freedom and nothing to estimate — 
 fallback asserts *no* overdispersion, which is the opposite of what ignorance warrants.
 The test then narrows to a binomial one: 1-vs-1 at Ψ 0.300 against 0.360 with 1000 reads
 returns `q = 4.5e-03`. `dispersion_is_estimable` detects this and `differential_splicing`
-warns; the default `min_samples = 2` keeps it out of reach. **Do not run the count-based
+warns; the default `min_samples = 2` keeps it out of reach.
+
+That check reads the **design** — it is given no counts, so it can only weigh informative
+samples against fitted group means. The data can defeat it: a table of constitutive
+splice sites passes with replicates to spare, because every group is fully covered, and
+still holds nothing to measure dispersion from, because Ψ is 1 in every sample.
+`dispersion_has_information` asks the second question of the counts themselves, and
+`differential_splicing` warns on it too. It deliberately does *not* fire on data that are
+genuinely tighter than binomial, which reach the same ceiling — that is a measurement
+rather than the absence of one. **Do not run the count-based
 test without replication** — there is no statistic that can rescue a design with no
 measure of biological variability.
 

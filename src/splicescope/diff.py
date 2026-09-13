@@ -28,6 +28,7 @@ import pandas as pd
 from scipy import stats
 
 from .betabinom import (
+    dispersion_has_information,
     dispersion_is_estimable,
     estimate_precision,
     estimate_precision_per_unit,
@@ -154,6 +155,22 @@ def _betabinom_test(
             "Psi 0.300 against 0.360 at 1000 reads returns q=4.5e-03 on no replication at "
             "all. Add replicates, raise min_samples, or do not treat these p-values as "
             "evidence.",
+            stacklevel=3,
+        )
+    if not dispersion_has_information(k, n, valid, groups=[is_a, is_b]):
+        # The check above reads the *design* — how many informative samples each group
+        # has — and cannot see that every one of them sits at a boundary. A table holding
+        # only constitutive splice sites passes it with replicates to spare and still
+        # leaves nothing to measure dispersion from, because Psi is 1 in every sample.
+        # Asking the data is a different question and has to be asked separately.
+        warnings.warn(
+            "no group anywhere both varies and sits away from Psi 0 and 1, so there is "
+            "nothing to measure replicate-to-replicate variability from. The "
+            "beta-binomial test falls back to assuming none, which makes it as narrow as "
+            "a binomial test and its p-values far too small. A table of constitutive "
+            "splice sites reaches this with replicates to spare: Psi there is 1 in every "
+            "sample because the site has nothing else to splice to. Check that the units "
+            "being tested can vary at all.",
             stacklevel=3,
         )
     precision = estimate_precision(k, n, valid, groups=[is_a, is_b])

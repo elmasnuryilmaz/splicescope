@@ -367,3 +367,76 @@ def test_the_per_unit_floor_still_sees_a_loose_unit_when_one_group_is_switched_f
         f"switching one group fully on moved the estimate from {loose} to {still_loose}; "
         f"the control's replicates still vary as much as they did"
     )
+
+
+def test_a_design_can_look_estimable_while_the_data_hold_nothing_to_estimate_from():
+    """`dispersion_is_estimable` is given no counts, so it can only weigh informative
+    samples against fitted group means. A table of constitutive splice sites passes it
+    with replicates to spare — every group is fully covered — and still leaves nothing to
+    measure dispersion from, because Ψ is 1 in every sample. The estimate then returns
+    its ceiling, which asserts *no* overdispersion and narrows the test to a binomial one:
+    the failure the design check exists to catch, reached past it.
+
+    The distinction that matters is against data genuinely tighter than binomial. Those
+    also send the estimate to the ceiling, and that is a measurement rather than the
+    absence of one, so it must not be reported as a failure.
+    """
+    from splicescope.betabinom import (
+        dispersion_has_information,
+        dispersion_is_estimable,
+        estimate_precision,
+    )
+
+    n = np.full((30, 6), 60.0)
+    mask = np.ones_like(n, dtype=bool)
+    groups = [GROUP_A, ~GROUP_A]
+
+    pinned = n.copy()  # every read on the one junction, in every sample
+    assert dispersion_is_estimable(n, mask, groups=groups), "three replicates per group"
+    assert not dispersion_has_information(pinned, n, mask, groups=groups)
+    assert estimate_precision(pinned, n, mask, groups=groups) == 1e5, "the ceiling"
+
+    # Ψ ≡ 0 is the same thing said the other way round
+    assert not dispersion_has_information(np.zeros_like(n), n, mask, groups=groups)
+
+    # data that vary but barely: the estimate is also at the ceiling, and it is earned
+    tight = np.tile(np.array([300.0, 310.0, 295.0, 360.0, 355.0, 370.0]), (30, 1))
+    depth = np.full_like(tight, 1000.0)
+    assert dispersion_has_information(tight, depth, mask, groups=groups)
+    assert estimate_precision(tight, depth, mask, groups=groups) == 1e5
+
+    # and ordinary data are informative
+    k, counts, full, group_a = _beta_binomial_null(np.full(200, 50.0), seed=0)
+    assert dispersion_has_information(k, counts, full, groups=[group_a, ~group_a])
+
+
+def test_the_test_says_so_when_the_units_it_was_given_cannot_vary():
+    """The library-level counterpart: the warning has to reach whoever ran it."""
+    import warnings
+
+    import pandas as pd
+
+    from splicescope.diff import differential_splicing
+
+    rows = [
+        dict(chrom="chr1", start=1000 + u, end=1200 + u, strand="+", sample=s,
+             psi_donor=1.0, count=60, donor_total=60.0)
+        for u in range(20)
+        for s in ("C1", "C2", "C3", "K1", "K2", "K3")
+    ]
+    psi = pd.DataFrame(rows)
+    groups = {s: ("ctrl" if s.startswith("C") else "kd") for s in psi["sample"].unique()}
+
+    with pytest.warns(UserWarning, match="nothing to measure replicate-to-replicate") as rec:
+        out = differential_splicing(psi, groups, test="betabinom")
+    assert len(out) == 20 and out["precision"].eq(1e5).all(), "the ceiling was used"
+    assert "constitutive" in str(rec[0].message), "name the shape this arrives in"
+
+    # a run whose units do vary says nothing
+    varying = psi.copy()
+    step = varying.groupby("sample", observed=True).ngroup() * 3
+    varying["count"] = 40 + step
+    varying["psi_donor"] = varying["count"] / 60.0
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        differential_splicing(varying, groups, test="betabinom")

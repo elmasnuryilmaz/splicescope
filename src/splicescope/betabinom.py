@@ -92,6 +92,68 @@ def fit_mu(k: np.ndarray, n: np.ndarray, mask: np.ndarray, s: float) -> np.ndarr
     return mu
 
 
+def _group_fits(
+    k: np.ndarray, n: np.ndarray, mask: np.ndarray, blocks: list[np.ndarray]
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Fitted group means, which observations inform dispersion, and how many means.
+
+    Every estimator below needs the same three things, and each used to compute them
+    itself. That is how the defect in ``docs/METHODS.md`` §5.5 survived as long as it
+    did: the residual sum excluded groups pinned at Ψ 0 or 1 and the degrees of freedom
+    counted them, in two copies of what should have been one block.
+
+    An observation informs dispersion only if its group's fitted mean lies strictly
+    inside (0, 1). A group with every read on one side has residuals of zero by
+    construction, whatever its replicates did, so it belongs to neither the residual sum
+    nor the degrees of freedom.
+    """
+    mu = np.zeros_like(k)
+    covered = np.zeros_like(mask)
+    for block in blocks:
+        block_mask = mask & block[None, :]
+        total = np.where(block_mask, n, 0.0).sum(axis=1)
+        included = np.where(block_mask, k, 0.0).sum(axis=1)
+        fitted = np.zeros_like(total)
+        np.divide(included, total, out=fitted, where=total > 0)
+        mu = np.where(block_mask, fitted[:, None], mu)
+        covered |= block_mask
+
+    informative = covered & (mu > 0.0) & (mu < 1.0)
+    n_params = np.zeros(k.shape[0])
+    for block in blocks:
+        n_params += (informative & block[None, :]).any(axis=1).astype(float)
+    return mu, informative, n_params
+
+
+def dispersion_has_information(
+    k: np.ndarray,
+    n: np.ndarray,
+    mask: np.ndarray,
+    groups: list[np.ndarray] | None = None,
+) -> bool:
+    """Whether the *data* carry any information about dispersion.
+
+    :func:`dispersion_is_estimable` asks the same question of the *design*. It is given
+    no counts, so it can only weigh informative samples against fitted group means — and
+    that is not enough. A table of constitutive splice sites passes it with replicates to
+    spare, because every group is fully covered, and still leaves nothing to measure
+    dispersion from, because every group sits at Ψ = 1. :func:`estimate_precision` then
+    returns its ceiling, which asserts *no* overdispersion rather than admitting
+    ignorance, and narrows the test to a binomial one.
+
+    Note what this does **not** report. Data genuinely tighter than binomial also send the
+    estimate to the ceiling, and that is a measurement rather than the absence of one, so
+    it is not a failure and this still returns ``True``.
+    """
+    blocks = groups if groups else [np.ones(k.shape[1], dtype=bool)]
+    _, informative, n_params = _group_fits(k, n, mask, blocks)
+    usable = (informative.sum(axis=1) - n_params) > 0
+    if not usable.any():
+        return False
+    keep = usable[:, None] & informative
+    return float(keep.sum()) - float(n_params[usable].sum()) > 0
+
+
 def dispersion_is_estimable(
     n: np.ndarray, mask: np.ndarray, groups: list[np.ndarray] | None = None
 ) -> bool:
@@ -176,19 +238,6 @@ def estimate_precision(
     """
     blocks = groups if groups else [np.ones(k.shape[1], dtype=bool)]
 
-    mu = np.zeros_like(k)
-    covered = np.zeros_like(mask)
-    n_params = np.zeros(k.shape[0])
-    for block in blocks:
-        block_mask = mask & block[None, :]
-        total = np.where(block_mask, n, 0.0).sum(axis=1)
-        included = np.where(block_mask, k, 0.0).sum(axis=1)
-        fitted = np.zeros_like(total)
-        np.divide(included, total, out=fitted, where=total > 0)
-        mu = np.where(block_mask, fitted[:, None], mu)
-        covered |= block_mask
-        n_params += (total > 0).astype(float)
-
     # A group whose fitted mean is exactly 0 or 1 put every read on one side, so its
     # residuals are zero by construction and it says nothing about how much replicates
     # vary. Most of them are structural: a constitutive donor carrying a single junction
@@ -200,10 +249,7 @@ def estimate_precision(
     # the estimated precision up. At one such unit per real one the estimate went from a
     # true 50 to 842, and the false-positive rate from 0.049 to 0.173 against a nominal
     # 0.05. They are excluded from both sides here; see validation/invariant_units.py.
-    informative = covered & (mu > 0.0) & (mu < 1.0)
-    n_params = np.zeros(k.shape[0])
-    for block in blocks:
-        n_params += (informative & block[None, :]).any(axis=1).astype(float)
+    mu, informative, n_params = _group_fits(k, n, mask, blocks)
 
     usable = (informative.sum(axis=1) - n_params) > 0
     if not usable.any():
@@ -252,19 +298,6 @@ def estimate_precision_per_unit(
     """
     blocks = groups if groups else [np.ones(k.shape[1], dtype=bool)]
 
-    mu = np.zeros_like(k)
-    covered = np.zeros_like(mask)
-    n_params = np.zeros(k.shape[0])
-    for block in blocks:
-        block_mask = mask & block[None, :]
-        total = np.where(block_mask, n, 0.0).sum(axis=1)
-        included = np.where(block_mask, k, 0.0).sum(axis=1)
-        fitted = np.zeros_like(total)
-        np.divide(included, total, out=fitted, where=total > 0)
-        mu = np.where(block_mask, fitted[:, None], mu)
-        covered |= block_mask
-        n_params += (total > 0).astype(float)
-
     # Same exclusion as the shared estimator: a group with every read on one side has
     # residuals of zero by construction and carries no information about dispersion, so
     # it counts on neither side. Here it matters for the unit whose two groups disagree
@@ -272,10 +305,7 @@ def estimate_precision_per_unit(
     # the shape of a real cryptic event. Counted, the control's genuine looseness was
     # diluted and the estimate came out 2.4x too high (13.6 against a true 5), so the
     # floor stopped biting exactly where it is meant to.
-    informative = covered & (mu > 0.0) & (mu < 1.0)
-    n_params = np.zeros(k.shape[0])
-    for block in blocks:
-        n_params += (informative & block[None, :]).any(axis=1).astype(float)
+    mu, informative, n_params = _group_fits(k, n, mask, blocks)
 
     mu = np.clip(mu, _EPS, 1.0 - _EPS)
     variance = n * mu * (1.0 - mu)

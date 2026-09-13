@@ -127,7 +127,7 @@ All notable changes to this project are documented here. The format is based on
   classes, and `plotting.plot_event_psi` draws the replicates. `run_demo` now also
   detects events, tests them, and predicts consequences, so the page is presentation only.
 
-- **Fourteen property-based tests, and `hypothesis` in the `dev` extra.** The README
+- **Twenty property-based tests.** The README
   described the suite as "unit + property + end-to-end". Nineteen tests had
   property-shaped names, but every one asserted an invariant on a hand-picked input —
   there was no generator anywhere, so the claim described a style rather than a
@@ -380,7 +380,9 @@ All notable changes to this project are documented here. The format is based on
   line and a test that pins the limitation so the next reader finds it described rather
   than having to measure it again.
 - **CI had been red for six pushes and nothing said so.** `tests/test_properties.py`
-  imports `hypothesis` at module level and no extra declared it, so the module failed to
+  imports `hypothesis` at module level and no extra declared it — the Added entry above
+  claimed otherwise until this was found, which is its own small lesson about writing
+  down what you meant to do rather than what you did — so the module failed to
   collect on every Python in the matrix and on the oldest job. It was installed locally,
   which is the whole problem: a dependency you already have is invisible until somebody
   else installs the package. `hypothesis>=6.80` is declared and pinned in

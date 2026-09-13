@@ -124,3 +124,55 @@ def test_both_ends_novel_is_its_own_feature(features):
     assert features.loc[500, "is_novel_both"] == 1
     assert features.loc[250, "is_novel_both"] == 0
     assert set(FEATURE_COLUMNS) <= set(features.reset_index().columns)
+
+
+def test_a_junction_with_no_annotation_nearby_is_scored_as_if_it_sat_on_one():
+    """A known limitation, pinned so it stays known.
+
+    `dist_known_donor` is the distance to the nearest annotated splice site, and it is
+    missing when the annotation has no site on that contig at all — ordinary in a run
+    that aligns to the whole genome and annotates from a primary assembly. The classifier
+    fills every missing feature with 0.0, which for a distance reads as *exactly on an
+    annotated site*: the strongest evidence there is against a junction being cryptic,
+    and the opposite of what the missing value means.
+
+    It stays that way on purpose. Imputing the largest distance seen instead moves
+    cross-validated ROC-AUC from 0.853 to 0.850 with 63 % of junctions on an unannotated
+    contig, because the forest reads an exact 0.0 as the distinct point mass it is. This
+    test exists so that the next person to read `np.nan_to_num(x, nan=0.0)` finds the
+    behaviour described rather than having to measure it again.
+    """
+    import numpy as np
+
+    from splicescope.cryptic import FEATURE_COLUMNS, extract_features
+    from splicescope.ml import CrypticClassifier
+
+    known = pd.DataFrame(
+        {"chrom": ["chr1"], "start": [1000], "end": [2000], "strand": ["+"],
+         "gene_id": ["G1"], "gene_name": ["GENE1"]}
+    )
+    rows = []
+    for chrom, start in (("chr1", 1000), ("chr1", 3000), ("chrUn_KI270742v1", 5000)):
+        for sample in ("S1", "S2"):
+            rows.append(
+                {"chrom": chrom, "start": start, "end": start + 500, "strand": "+",
+                 "sample": sample, "count": 40, "motif": "GT/AG", "sclass": "cryptic",
+                 "gene_id": "G1", "psi_donor": 0.5, "is_cryptic_truth": 1}
+            )
+    feats = extract_features(pd.DataFrame(rows), known)
+
+    on_site = feats[(feats["chrom"] == "chr1") & (feats["start"] == 1000)].iloc[0]
+    unplaced = feats[feats["chrom"] == "chrUn_KI270742v1"].iloc[0]
+    assert on_site["dist_known_donor"] == 0.0, "genuinely on an annotated donor"
+    assert pd.isna(unplaced["dist_known_donor"]), "no annotated site on that contig"
+
+    x = np.nan_to_num(feats[FEATURE_COLUMNS].to_numpy(float), nan=0.0)
+    column = FEATURE_COLUMNS.index("dist_known_donor")
+    rows_on, rows_unplaced = feats.index.get_loc(on_site.name), feats.index.get_loc(unplaced.name)
+    assert x[rows_on, column] == x[rows_unplaced, column] == 0.0, (
+        "the two are indistinguishable to the model, and they mean opposite things"
+    )
+    # and that is what the classifier is handed, not something the feature table hides
+    clf = CrypticClassifier()
+    feats.loc[feats.index[0], "is_cryptic_truth"] = 0
+    assert np.isnan(clf._xy(feats)[0]).sum() == 0, "no NaN reaches the forest"

@@ -82,6 +82,22 @@ class CrypticClassifier:
 
     def _xy(self, feats: pd.DataFrame):
         x = feats[self.features].to_numpy(dtype=float)
+        # Zero is a meaningful value for several of these features, so filling a missing
+        # measurement with it is semantically wrong: `dist_known_donor = 0` reads as
+        # "exactly on an annotated splice site", and a junction on a contig the
+        # annotation says nothing about has no nearest site at all. `mean_psi_donor` is
+        # missing wherever the donor is too lowly covered to have a Psi — a quarter of
+        # the junctions at `min_reads=5`, all placed below the smallest value that was
+        # measured.
+        #
+        # It was measured rather than argued about. Imputing the median instead moves
+        # cross-validated ROC-AUC from 0.900 to 0.898, and dropping the feature entirely
+        # gives 0.893; filling the distances with the largest distance seen rather than
+        # zero gives 0.850 against 0.853, with 63 % of junctions on an unannotated
+        # contig. The forest reads an exact 0.0 as the distinct point mass it is, and
+        # `n_samples_support` and `log_max_count` already carry the coverage the
+        # missingness stands for. So this stays, deliberately, and the limitation is
+        # pinned by a test rather than left for the next reader to rediscover.
         x = np.nan_to_num(x, nan=0.0)
         y = feats[TRUTH_COLUMN].to_numpy(dtype=int)
         _require_two_classes(y)

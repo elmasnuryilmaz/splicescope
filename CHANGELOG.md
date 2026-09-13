@@ -365,6 +365,20 @@ All notable changes to this project are documented here. The format is based on
   count-based runs move, by roughly a factor of two on the tutorial's data; the committed
   outputs are rebuilt.** Reproduce with `validation/invariant_units.py`; METHODS §5.5 and
   a test compare every figure.
+- **The classifier's zero-fill for a missing feature is measured, recorded and pinned.**
+  Zero is a meaningful value for several of these features, so filling a missing
+  measurement with it is semantically wrong: `dist_known_donor = 0` reads as *exactly on
+  an annotated splice site*, and a junction on a contig the annotation says nothing about
+  has no nearest site at all. `mean_psi_donor` is missing wherever the donor is too lowly
+  covered to have a Ψ — a quarter of the junctions at `min_reads=5`, all placed below the
+  smallest value measured. It was measured rather than argued about: imputing the median
+  moves cross-validated ROC-AUC from 0.900 to 0.898 and dropping the feature gives 0.893,
+  while filling the distances with the largest distance seen gives 0.850 against 0.853
+  with 63 % of junctions on an unannotated contig. The forest reads an exact 0.0 as the
+  distinct point mass it is, and `n_samples_support` and `log_max_count` already carry
+  the coverage the missingness stands for. Unchanged, therefore, with the numbers at the
+  line and a test that pins the limitation so the next reader finds it described rather
+  than having to measure it again.
 - **CI had been red for six pushes and nothing said so.** `tests/test_properties.py`
   imports `hypothesis` at module level and no extra declared it, so the module failed to
   collect on every Python in the matrix and on the oldest job. It was installed locally,

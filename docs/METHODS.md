@@ -190,6 +190,53 @@ Units with fewer than `min_samples` informative replicates per group are skipped
 "Significant" defaults to `q ≤ 0.05` and `|ΔΨ| ≥ 0.1`. The rank test remains available as
 `test="ranksum"` for Ψ tables that carry no counts.
 
+### 5.5 Sites with nothing to choose between
+
+Most splice sites in a genome are constitutive and carry a single junction. Ψ there is
+1.0 in every sample — not because splicing is precise, but because the site has nothing
+else to splice to. Such a unit reaches the test like any other, and does two kinds of
+damage.
+
+**It entered the dispersion estimate.** Dispersion is measured from how far replicates
+fall from their own group's mean. A group with every read on one junction has residuals
+of exactly zero, so it says nothing about replicate-to-replicate variability. The
+estimator zeroed its residual and then counted its observations in the degrees of freedom
+anyway — the numerator's guard and the denominator's disagreed — which dilutes the
+residual mean towards zero and drives the estimated precision up. A narrower null makes
+every *real* unit's p-value too small:
+
+| units that cannot vary | estimated `s` (true 50) | false positives at nominal 0.05 |
+|---|---:|---:|
+| none present | 50.6 | 0.049 |
+| one per unit that can, counted as before | 842.1 | **0.173** |
+| one per unit that can, excluded | 50.6 | 0.049 |
+
+1,000 units that vary at `s = 50`, 3 against 3 at 60 reads, averaged over 5 independent
+simulations. A human annotation is far more lopsided than one-to-one, so this understates
+it. Such groups are now excluded from both sides of the estimator, which removes the
+effect entirely: the estimate is 50.6 and the rate 0.049 whether they are present or not.
+The exclusion is **per group**, not per unit — a junction switched fully on in the
+knockdown and varying in the control still contributes what the control's replicates do,
+and that is the shape of a real cryptic event.
+
+**It still enters the correction.** Both tests return exactly 1.0 for such a unit
+whichever way the samples are labelled: the rank test has no ordering to work with, and
+the beta-binomial's two groups have the same pooled proportion, so the likelihood ratio
+is 1. It cannot be rejected at any threshold, yet it counts in the Benjamini–Hochberg
+denominator, where it makes every other unit's q-value worse. On a 200-gene simulation
+48 % of the tested units were of this kind, costing a factor of 1.91 in q.
+
+`differential_splicing(filter_invariant=True)` sets them aside before testing. This is the
+degenerate case of **independent filtering** (Bourgon, Gentleman & Huber, *PNAS* 2010):
+the criterion is the spread across all samples, which never looks at the group labels,
+and zero spread forces `p = 1` whatever those labels are, so no unit that could have been
+rejected is removed. It is **off by default**, because it changes every q-value in a run
+and that should be a deliberate choice; a warning reports how many units it set aside.
+
+Reproduce both tables with
+[`validation/invariant_units.py`](../validation/invariant_units.py); a test compares every
+figure above against it.
+
 ## 5b. Event-level PSI (cassette exons)
 
 Splice-site usage (§4) is model-free but not an *event*. `events` additionally

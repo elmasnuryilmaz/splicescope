@@ -264,3 +264,73 @@ def test_the_estimated_precision_stays_inside_its_bounds():
     assert s == pytest.approx(1.0), "this data is meant to sit on the floor"
     raised = bb.estimate_precision(k, n, mask, groups=groups, min_precision=7.5)
     assert raised == pytest.approx(7.5), "the floor that is asked for is the one used"
+
+
+def test_a_site_with_nothing_to_splice_to_does_not_tighten_the_null_for_everyone_else():
+    """The most consequential defect found this session, and it was inside the estimator.
+
+    A constitutive donor carrying a single junction puts every read on that junction, so
+    its Ψ is 1 in every sample — not because splicing is precise there, but because the
+    site has nothing else to splice to. Such a unit says nothing about how much
+    replicates vary. The estimator zeroed its residual, through a `variance > 0` guard,
+    and then counted its observations in the degrees of freedom anyway — so it entered
+    the denominator and not the numerator. (The guard could never have fired: it is
+    applied after the fitted mean has been clipped away from both ends, which makes the
+    variance positive by construction.)
+
+    That dilutes the residual mean towards zero and drives the estimated precision up,
+    which narrows the null for every real unit. Across a genome these sites outnumber
+    the alternative ones, so the effect is not small: at one per real unit the estimate
+    went from a true 50 to 842 and the false-positive rate from 0.049 to 0.173, against
+    a nominal 0.05. Measured in `validation/invariant_units.py`.
+    """
+    from splicescope.betabinom import estimate_precision, lrt
+
+    real_k, real_n, mask, group_a = _beta_binomial_null(np.full(1000, 50.0), seed=0)
+    groups = [group_a, ~group_a]
+
+    # every read on the one junction, in every sample
+    stuck_n = np.full_like(real_n, 60.0)
+    stuck_k = stuck_n.copy()
+    both_k = np.vstack([real_k, stuck_k])
+    both_n = np.vstack([real_n, stuck_n])
+    both_mask = np.ones_like(both_n, dtype=bool)
+
+    alone = estimate_precision(real_k, real_n, mask, groups=groups)
+    together = estimate_precision(both_k, both_n, both_mask, groups=groups)
+
+    assert 40 < alone < 65, f"the real units alone recover s near 50, got {alone}"
+    assert together == pytest.approx(alone, rel=0.15), (
+        f"adding 1000 units that cannot vary moved the estimate from {alone} to "
+        f"{together}; they carry no information about dispersion and must not count"
+    )
+
+    # and the thing that actually matters: the test stays calibrated either way
+    for precision in (alone, together):
+        _, _, _, p = lrt(real_k, real_n, mask, group_a, ~group_a, precision)
+        assert 0.03 < (p <= 0.05).mean() < 0.075, f"nominal 0.05 at s={precision}"
+
+    # the same at the other boundary: a junction nobody uses
+    unused_k = np.zeros_like(real_n)
+    with_zeros = estimate_precision(
+        np.vstack([real_k, unused_k]), np.vstack([real_n, stuck_n]), both_mask, groups=groups
+    )
+    assert with_zeros == pytest.approx(alone, rel=0.15), "Ψ ≡ 0 is the same problem"
+
+
+def test_a_group_pinned_to_one_boundary_still_contributes_its_other_group():
+    """The exclusion is per group, not per unit: a junction switched fully on in the
+    knockdown and varying in the control still tells you what the control's replicates
+    do. Dropping the whole unit would throw that away — and this is the shape of a real
+    cryptic event, so it is the last thing to discard."""
+    from splicescope.betabinom import estimate_precision
+
+    k, n, mask, group_a = _beta_binomial_null(np.full(400, 50.0), seed=1)
+    baseline = estimate_precision(k, n, mask, groups=[group_a, ~group_a])
+
+    switched = k.copy()
+    switched[:, ~group_a] = n[:, ~group_a]  # group B fully on, group A left alone
+    s = estimate_precision(switched, n, mask, groups=[group_a, ~group_a])
+
+    assert 40 < s < 65, f"group A's variability is still measured, got {s}"
+    assert s == pytest.approx(baseline, rel=0.35)

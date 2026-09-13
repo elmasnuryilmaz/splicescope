@@ -346,3 +346,73 @@ def test_a_result_with_no_rows_still_has_the_columns_a_result_has(test):
 
     assert header(empty) == header(populated)
     assert significant(empty).empty
+
+
+def test_a_unit_that_cannot_vary_is_reported_as_untestable_and_can_be_set_aside():
+    """A splice site with nothing to choose between gets p = 1 from either test.
+
+    A constitutive donor carrying a single junction has Ψ = 1 in every sample, because
+    the site has nothing else to splice to. The rank test has no ordering to work with
+    and the beta-binomial's two groups have the same pooled proportion, so both return
+    exactly 1.0 whichever way the samples are labelled. It cannot be rejected at any
+    threshold — yet it still enters the Benjamini-Hochberg denominator, where it makes
+    every real unit's q-value worse. `filter_invariant` sets such units aside; it is off
+    by default because it changes every q-value in a run.
+    """
+    from splicescope.diff import differential_splicing, significant
+
+    psi = _counts_table(n_units=4).drop(columns=["count", "donor_total"])
+    flat = psi["start"] == 1000
+    psi.loc[flat, "psi_donor"] = 0.5   # the same Ψ in all six samples
+    groups = _groups(psi)
+
+    kept = differential_splicing(psi, groups, test="ranksum")
+    stuck = kept[kept["start"] == 1000].iloc[0]
+    assert len(kept) == 4 and stuck["delta_psi"] == 0.0
+    assert stuck["pvalue"] == 1.0, "the honest answer, and the largest one there is"
+    # q = 0.5 is already absurdly lax, and it is still not called at it
+    assert stuck["start"] not in set(significant(kept, q=0.5, min_delta=0.0)["start"])
+
+    with pytest.warns(UserWarning, match="set aside"):
+        dropped = differential_splicing(psi, groups, test="ranksum", filter_invariant=True)
+
+    assert len(dropped) == 3 and 1000 not in set(dropped["start"])
+    # the units that could be tested keep their p-values; only the correction moves
+    merged = kept.merge(dropped, on=["chrom", "start", "end", "strand"], suffixes=("", "_f"))
+    assert len(merged) == 3
+    assert np.allclose(merged["pvalue"], merged["pvalue_f"])
+    assert (merged["qvalue_f"] <= merged["qvalue"] + 1e-12).all(), "never worse"
+    assert merged["qvalue_f"].min() < merged["qvalue"].min(), "and better where it matters"
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"test": "wilcoxon"}, "unknown test"),
+        ({"dispersion": "empirical"}, "unknown dispersion"),
+    ],
+)
+def test_an_option_that_does_not_exist_is_refused_by_name(kwargs, message):
+    """Silently falling back to the default would run a different analysis from the one
+    that was asked for, and say nothing about it."""
+    from splicescope.diff import differential_splicing
+
+    psi = _counts_table(n_units=2)
+    with pytest.raises(ValueError, match=message):
+        differential_splicing(psi, _groups(psi), **kwargs)
+
+
+def test_more_than_two_conditions_is_refused_and_the_message_names_them():
+    """A three-arm design — control and two doses, or a timecourse — is a real experiment
+    and a natural thing to point this at. It is not what a two-group test computes, so it
+    is refused, and the message lists what was found so the fix is obvious."""
+    from splicescope.diff import differential_splicing
+
+    psi = _counts_table(n_units=2)
+    groups = {s: {"C1": "ctrl", "C2": "ctrl", "C3": "low"}.get(s, "high") for s in
+              psi["sample"].unique()}
+
+    with pytest.raises(ValueError, match="expected exactly 2 conditions") as excinfo:
+        differential_splicing(psi, groups)
+    for condition in ("ctrl", "low", "high"):
+        assert condition in str(excinfo.value), "say which conditions were found"

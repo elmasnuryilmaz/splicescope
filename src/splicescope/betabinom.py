@@ -158,6 +158,18 @@ def estimate_precision(
     would charge that difference to dispersion and destroy the power the test is
     supposed to have.
 
+    A group whose fitted mean sits exactly at 0 or 1 is excluded — from the residual sum
+    and from the degrees of freedom both. It has every read on one side, so its residuals
+    are zero by construction and it carries no information about replicate-to-replicate
+    variability. Most such groups are structural rather than biological: a constitutive
+    donor with a single junction has Ψ = 1 in every sample because the site has nothing
+    else to splice to, and across a genome those sites outnumber the alternative ones.
+    Counting them on one side only drove the estimate from a true 50 to 842 and the
+    false-positive rate from 0.049 to 0.173 — see ``validation/invariant_units.py`` and
+    ``docs/METHODS.md`` §5.5. The exclusion is per group, so a junction switched fully on
+    in one condition still contributes what the other condition's replicates do, which is
+    the shape of a real cryptic event.
+
     When the design cannot support an estimate at all this returns ``max_precision``,
     which asserts no overdispersion rather than admitting ignorance — check
     :func:`dispersion_is_estimable` first. ``differential_splicing`` does.
@@ -177,17 +189,33 @@ def estimate_precision(
         covered |= block_mask
         n_params += (total > 0).astype(float)
 
-    usable = (covered.sum(axis=1) - n_params) > 0
+    # A group whose fitted mean is exactly 0 or 1 put every read on one side, so its
+    # residuals are zero by construction and it says nothing about how much replicates
+    # vary. Most of them are structural: a constitutive donor carrying a single junction
+    # has Psi = 1 in every sample because the site has nothing else to splice to, and
+    # such sites outnumber the alternative ones across a genome. Counting them in the
+    # degrees of freedom but not in the residual sum -- which is what happened, because
+    # the `variance > 0` guard below fires after `mu` has been clipped away from both
+    # ends and so never fires at all -- dilutes the residual mean towards zero and drives
+    # the estimated precision up. At one such unit per real one the estimate went from a
+    # true 50 to 842, and the false-positive rate from 0.049 to 0.173 against a nominal
+    # 0.05. They are excluded from both sides here; see validation/invariant_units.py.
+    informative = covered & (mu > 0.0) & (mu < 1.0)
+    n_params = np.zeros(k.shape[0])
+    for block in blocks:
+        n_params += (informative & block[None, :]).any(axis=1).astype(float)
+
+    usable = (informative.sum(axis=1) - n_params) > 0
     if not usable.any():
         return max_precision
 
     mu = np.clip(mu, _EPS, 1.0 - _EPS)
     variance = n * mu * (1.0 - mu)
     resid_sq = np.where(
-        covered & (variance > 0), (k - n * mu) ** 2 / np.maximum(variance, _EPS), 0.0
+        informative & (variance > 0), (k - n * mu) ** 2 / np.maximum(variance, _EPS), 0.0
     )
 
-    keep = usable[:, None] & covered
+    keep = usable[:, None] & informative
     pearson = float(resid_sq[keep].sum())
     n_total = float(keep.sum())
     df = n_total - float(n_params[usable].sum())

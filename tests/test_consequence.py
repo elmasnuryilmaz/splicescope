@@ -772,3 +772,93 @@ def test_a_premature_stop_with_no_recorded_distance_is_still_described(kind):
     assert "final exon" in sentence
     assert "no exon-exon junction downstream" in sentence
     assert "None" not in sentence and sentence.endswith(".")
+
+
+def test_a_frame_shift_in_the_last_exon_has_no_downstream_stop_to_find(tmp_path):
+    """Coverage found this branch had never run, and it is the one that matters most.
+
+    A frame-shifting change in the *last* exon has no exon after it to resume into, so
+    there is no downstream sequence to search for a premature stop and — this is the
+    point — no exon-exon junction downstream of wherever the ribosome does stop. The
+    50-nucleotide rule cannot fire without one. The call is `frameshift` with decay not
+    predicted, which is the NMD-escape corner of the biology: a shifted, likely
+    non-functional protein that the cell does not clear.
+    """
+    from splicescope.consequence import _resume_after
+
+    exons = [(101, 200), (401, 500), (701, 800)]
+    tx = make_transcript("+", exons=exons)
+    # 40 nt inside the final exon: shifts the frame (40 % 3 == 1) and carries no stop
+    start, end = 721, 760
+    assert _resume_after(tx, start, end) is None, "nothing transcribed after it"
+
+    with GenomeFasta(write_fasta(tmp_path, {"chr1": "G" * 1000})) as fa:
+        result = predict_consequence(tx, fa, "chr1", start, end)
+
+    assert result.consequence_class == FRAMESHIFT
+    assert result.frameshift and result.insert_length == 40
+    assert result.ptc_offset is None, "no downstream sequence to find a stop in"
+    assert result.distance_to_last_junction is None
+    assert result.nmd_predicted is False, "the 50-nt rule needs a junction downstream"
+    assert "frame" in describe(result).lower()
+
+    # the same change one exon earlier does have somewhere to resume, so it is a
+    # different question entirely — this is not just "any frameshift is called this"
+    assert _resume_after(tx, 221, 260) == 401
+
+
+def test_a_junction_table_with_no_gene_column_gets_the_same_calls(tmp_path):
+    """The README offers this path — "candidates produced elsewhere, an existing rMATS or
+    LeafCutter run" — and a table from elsewhere need not name genes. Coverage showed the
+    branch that handles it had never run.
+
+    The gene column is an index into the annotation, not evidence: it narrows which
+    transcripts are considered, so it can only make the search cheaper. If dropping it
+    changed a call, one of the two answers would be wrong.
+    """
+    from splicescope.consequence import annotate_junction_consequences
+
+    other = Transcript(
+        transcript_id="T2", gene_id="G2", gene_name="GENE2", chrom="chr1", strand="+",
+        exons=[(2101, 2200), (2401, 2500)], cds=[(2101, 2200), (2401, 2500)],
+    )
+    transcripts = {"T1": make_transcript(), "T2": other}
+    columns = ["chrom", "intron_start", "intron_end", "strand", "gene_id"]
+    events = pd.DataFrame(
+        [("chr1", 261, 400, "+", "G1"), ("chr1", 250, 350, "+", "G1"),
+         ("chr1", 2250, 2400, "+", "G2")],
+        columns=columns,
+    )
+
+    seq = "A" * 200 + "GGC" * 30 + "A" * 2500
+    with GenomeFasta(write_fasta(tmp_path, {"chr1": seq})) as fa:
+        with_gene = annotate_junction_consequences(events, transcripts, fa)
+        without = annotate_junction_consequences(
+            events.drop(columns=["gene_id"]), transcripts, fa
+        )
+
+    assert len(with_gene) == len(without) == 3
+    for column in ("consequence_class", "frameshift", "nmd_predicted", "n_host_transcripts"):
+        assert list(with_gene[column]) == list(without[column]), (
+            f"{column} changed when the gene column was dropped"
+        )
+    assert set(with_gene["consequence_class"]) != {NO_HOST}, "and the calls are real ones"
+
+
+def test_checking_a_genome_against_nothing_is_not_an_error(tmp_path):
+    """`check_genome` refuses a genome the events cannot be read against. An empty table
+    of events, or one with no chromosome column, names no mistake to refuse — a caller
+    whose upstream step found nothing must not meet an exception here."""
+    from splicescope.consequence import check_genome
+
+    transcripts = {"T1": make_transcript()}
+    empty = pd.DataFrame(columns=["chrom", "intron_start", "intron_end", "strand"])
+    with GenomeFasta(write_fasta(tmp_path, {"chr1": "A" * 1000})) as fa:
+        check_genome(empty, transcripts, fa, end_col="intron_end")
+        check_genome(
+            pd.DataFrame({"intron_end": [500]}), transcripts, fa, end_col="intron_end"
+        )
+        # and it still refuses the mistake it exists for
+        past_the_end = pd.DataFrame({"chrom": ["chr1"], "intron_end": [99_999]})
+        with pytest.raises(ValueError, match="chr1"):
+            check_genome(past_the_end, transcripts, fa, end_col="intron_end")

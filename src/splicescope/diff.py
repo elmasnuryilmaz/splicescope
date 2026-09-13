@@ -275,6 +275,40 @@ def _check_inputs(
             )
 
 
+def _drop_invariant_units(
+    df: pd.DataFrame, key: list[str], value: str
+) -> tuple[pd.DataFrame, int]:
+    """Set aside units whose Ψ is the same in every sample that measured it.
+
+    Such a unit is not a test that came out negative — it is a test that could not be
+    run. Both tests return exactly 1.0 for it, whichever way the samples are labelled: a
+    rank test has no ordering to work with, and the beta-binomial's two groups have the
+    same pooled proportion, so the likelihood ratio is 1. It cannot be rejected at any
+    threshold.
+
+    Most of them are structural. A constitutive donor with one junction has Ψ ≡ 1 in
+    every sample because there is nothing else for the site to splice to, and sites like
+    that outnumber the alternative ones across a genome. They still enter the
+    Benjamini–Hochberg denominator, where each one makes every real unit's q-value
+    worse — 48 % of the tested units on a 200-gene simulation, costing a factor of 1.91.
+
+    Removing tests that cannot be rejected before correcting is *independent filtering*
+    (Bourgon, Gentleman & Huber, PNAS 2010). The filter here is the degenerate case of
+    it: the criterion is the spread over all samples, computed without looking at the
+    group labels, and zero spread forces p = 1 whatever the labels are.
+
+    Returns the kept rows and how many units were set aside.
+    """
+    spread = df.groupby(key, observed=True)[value].nunique(dropna=True)
+    invariant = spread[spread <= 1].index
+    if len(invariant) == 0:
+        return df, 0
+    keep = ~pd.MultiIndex.from_frame(df[key]).isin(invariant) if len(key) > 1 else (
+        ~df[key[0]].isin(invariant)
+    )
+    return df[keep], int(len(invariant))
+
+
 def differential_splicing(
     psi_df: pd.DataFrame,
     groups: dict[str, str],
@@ -285,6 +319,7 @@ def differential_splicing(
     inc_col: str | None = None,
     total_col: str | None = None,
     dispersion: str = "shared",
+    filter_invariant: bool = False,
 ) -> pd.DataFrame:
     """Test each junction (or event) for differential Ψ between two conditions.
 
@@ -312,6 +347,21 @@ def differential_splicing(
         dispersed units falls from 0.155 to 0.079 and the overall rate from 0.077
         to 0.039. Reproduce with ``validation/dispersion_trade.py``.
 
+    filter_invariant : set aside units whose Ψ is identical in every sample before
+        correcting for multiple testing. Both tests return exactly 1.0 for such a unit
+        whichever way the samples are labelled, so it cannot be rejected at any
+        threshold — it is not a test that came out negative but one that could not be
+        run. Most are structural: a constitutive donor with a single junction has Ψ ≡ 1
+        because the site has nothing else to splice to, and such sites outnumber the
+        alternative ones across a genome. Left in, they inflate the Benjamini–Hochberg
+        denominator and make every real unit's q-value worse: 48 % of the tested units
+        on a 200-gene simulation, costing a factor of 1.91 in q. This is the degenerate
+        case of independent filtering (Bourgon, Gentleman & Huber, PNAS 2010) — the
+        criterion is the spread over all samples, which never looks at the group labels,
+        and zero spread forces p = 1 whatever the labels are. Off by default because it
+        changes every q-value in a run; a warning says how many units it set aside.
+        Reproduce with ``validation/invariant_units.py``.
+
     Returns one row per unit, sorted by q-value.
     """
     conditions = sorted(set(groups.values()))
@@ -332,6 +382,21 @@ def differential_splicing(
         for c in ("gene_id", "gene_name", "sclass", "event_type")
         if c in df.columns and c not in key
     ]
+
+    if filter_invariant:
+        df, set_aside = _drop_invariant_units(df, key, value)
+        if set_aside:
+            # never silently: a correction over a different set of tests is a different
+            # analysis, and the reader has to be able to see that it happened
+            warnings.warn(
+                f"{set_aside} of the units in the Psi table have the same {value!r} in "
+                "every sample and were set aside before testing: both tests return p = 1 "
+                "for them whatever the labels, so they cannot be rejected and only "
+                "inflate the Benjamini-Hochberg denominator. Some of them would have "
+                "been dropped by `min_samples` anyway. Pass filter_invariant=False to "
+                "keep them.",
+                stacklevel=2,
+            )
 
     counts = _resolve_count_columns(df, value, inc_col, total_col)
     if test == "betabinom" and counts is None:

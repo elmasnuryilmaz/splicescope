@@ -13,6 +13,7 @@ import re
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -201,3 +202,42 @@ def test_the_committed_tutorial_is_the_one_the_builder_produces():
     assert committed["metadata"]["kernelspec"]["name"] == "python3", (
         "a venv-specific kernel name would not open on anyone else's machine"
     )
+
+
+def test_the_invariant_unit_tables_match_the_script_that_produces_them():
+    """METHODS §5.5 quotes what a splice site with nothing to choose between costs, and
+    what excluding it recovers. Both rows are measurements, so both must still be
+    reproducible — including the "before the fix" one, which is why the script keeps the
+    old arithmetic rather than a remembered number."""
+    text = (ROOT / "docs" / "METHODS.md").read_text()
+    section = text[text.index("### 5.5 Sites with nothing to choose between") :]
+    section = section[: section.index("## 5b.")]
+
+    values = _load("invariant_units").measure(seeds=5)
+
+    rows = re.findall(
+        r"^\| (none present|one per unit that can, counted as before|"
+        r"one per unit that can, excluded) \| ([\d.]+) \| \*{0,2}([\d.]+)\*{0,2} \|$",
+        section,
+        re.M,
+    )
+    assert len(rows) == 3, f"expected three rows in the §5.5 table, parsed {rows}"
+    keys = {
+        "none present": "absent",
+        "one per unit that can, counted as before": "before the fix",
+        "one per unit that can, excluded": "invariant present",
+    }
+    for label, precision, rate in rows:
+        key = keys[label]
+        assert float(precision) == pytest.approx(
+            values[f"estimated precision, invariant {key}" if key == "absent"
+                   else f"estimated precision, {key}"], rel=0.05
+        ), f"{label}: precision"
+        assert float(rate) == pytest.approx(
+            values[f"false-positive rate, invariant {key}" if key == "absent"
+                   else f"false-positive rate, {key}"], abs=0.01
+        ), f"{label}: false-positive rate"
+
+    # the prose numbers, which drift just as readily as a table
+    assert "48 %" in section and "1.91" in section
+    assert str(int(values["true precision"])) in section

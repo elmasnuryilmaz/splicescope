@@ -338,6 +338,41 @@ All notable changes to this project are documented here. The format is based on
   all. A test checks that the committed notebook is still the builder's — a notebook
   hand-edited in Jupyter and committed would otherwise be discarded silently by the next
   rebuild.
+- **A splice site with nothing to choose between was tightening the null for every other
+  site.** The most consequential defect found by this audit, and it was inside the
+  dispersion estimator. Most splice sites in a genome are constitutive and carry a single
+  junction, so Ψ there is 1.0 in every sample — not because splicing is precise, but
+  because the site has nothing else to splice to. Such a group's residuals are zero by
+  construction and it says nothing about replicate-to-replicate variability.
+  `estimate_precision` zeroed its residual through a `variance > 0` guard and then
+  counted its observations in the degrees of freedom anyway, so it entered the
+  denominator and not the numerator. (The guard could never have fired: it is applied
+  after the fitted mean has been clipped away from both ends, which makes the variance
+  positive by construction.) That dilutes the residual mean towards zero and drives the
+  estimated precision up, narrowing the null for every real unit:
+
+  | units that cannot vary | estimated `s` (true 50) | false positives at nominal 0.05 |
+  |---|---:|---:|
+  | none present | 50.6 | 0.049 |
+  | one per unit that can, counted as before | 842.1 | **0.173** |
+  | one per unit that can, excluded | 50.6 | 0.049 |
+
+  A human annotation is far more lopsided than one-to-one, so this understates it. Such
+  groups are now excluded from both sides of the estimator, which removes the effect
+  entirely. The exclusion is *per group*, not per unit, so a junction switched fully on in
+  the knockdown and varying in the control still contributes what the control's
+  replicates do — and that is the shape of a real cryptic event. **p-values on
+  count-based runs move, by roughly a factor of two on the tutorial's data; the committed
+  outputs are rebuilt.** Reproduce with `validation/invariant_units.py`; METHODS §5.5 and
+  a test compare every figure.
+- **`differential_splicing(filter_invariant=True)`, off by default.** The same units also
+  enter the Benjamini–Hochberg denominator, where they make every real unit's q-value
+  worse though their own p-value is exactly 1 and no threshold could reject them: 48 % of
+  the tested units on a 200-gene simulation, costing a factor of 1.91 in q. Setting them
+  aside is the degenerate case of independent filtering (Bourgon, Gentleman & Huber, PNAS
+  2010) — the criterion is the spread across all samples, which never looks at the group
+  labels, and zero spread forces p = 1 whatever those labels are. Off by default because
+  it changes every q-value in a run; a warning reports how many units it set aside.
 - **An event table's columns were an accident of the data.** Sweeping for the defect
   above found two more of it, in `events`. `detect_events` returned whatever `pd.concat`
   made of the types it happened to find: a dataset with cassette exons but no mutually

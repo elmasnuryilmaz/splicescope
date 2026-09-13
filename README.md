@@ -140,7 +140,7 @@ flowchart LR
 | **Features** | `cryptic` | intron length, read support, recurrence, motif, distance to known sites … |
 | **Learn** | `ml` | RandomForest + StandardScaler, stratified-CV, permutation importance, model card |
 | **Consequence** | `consequence` | reading frame, premature stop codon and NMD prediction, for cassette exons and for splice-site shifts |
-| **Enrich** | `enrich` | hypergeometric pathway over-representation (ORA) with BH-FDR, any GMT gene sets — matched by symbol or accession, versioned or not |
+| **Enrich** | `enrich` | pathway over-representation (ORA) with BH-FDR, corrected by default for how many units each gene was tested on, so a long gene is not enriched for being long; any GMT gene sets, matched by symbol or accession, versioned or not |
 | **Visualize** | `plotting` | publication-quality panels (headless-safe) |
 
 The synthetic generator (`simulate`) is biologically faithful: a cryptic exon produces a
@@ -285,8 +285,14 @@ The bundled data is **simulated** to keep the project self-contained and testabl
 pipeline has also been run end-to-end on a real experiment — a human TDP-43 knockdown
 (GSE245332, 3 vs 3) — where it recovers STMN2, HDGFL2, PFKP, ARHGAP32, KALRN, AGRN, ATG4B
 and RAP1GAP among its significant events, and calls 4,699 differentially spliced events
-against rMATS's 3,724 on the same BAMs. Numbers, misses and the BAM-to-junction step are
-in [validation/README.md](validation/README.md).
+against rMATS's 3,724 on the same BAMs. Those figures were measured with 0.8.1 and three
+defects in the differential path have been fixed since, each of which changes *which*
+units are tested or how wide the null is, so they will move when it is re-run — the
+weakest of those genes sits at `q = 1.5e-02` and may not survive. What does not move is
+the argument they were collected for: a rank test cannot clear Benjamini–Hochberg at 3
+against 3 and the count model clears it by more than a hundred orders of magnitude.
+Numbers, misses, the BAM-to-junction step and the full caveat are in
+[validation/README.md](validation/README.md).
 
 The classifier is a separate matter: its model card is explicit that it should be
 retrained on curated labels and validated on held-out genes before any real-data use.

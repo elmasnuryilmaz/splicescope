@@ -381,6 +381,18 @@ All notable changes to this project are documented here. The format is based on
   final exon, a codon straddling the junction before it, and no junction at all. The
   mutation that used to pin the exception became equivalent, which is how the overlap
   surfaced; it is replaced by two that pin the single rule on both paths.
+- **The README stated the real-data counts without the caveat that sits behind its own
+  link.** 4,699 differentially spliced events and the eight recovered genes were measured
+  with 0.8.1, and three defects in the differential path have been fixed since — each
+  changing which units are tested or how wide the null is. A reader who did not follow the
+  link took those as current. The paragraph now says they will move, and that the weakest
+  of the genes sits at `q = 1.5e-02` and may not survive, while naming what does not move:
+  a rank test cannot clear Benjamini–Hochberg at 3 against 3 and the count model clears it
+  by more than a hundred orders of magnitude.
+- **The pipeline table described the plain hypergeometric.** Opportunity weighting has
+  been the default since it was added, and is the reason a long gene is not enriched for
+  being long — one of the more useful things `enrich` does, and invisible in the table a
+  reader skims.
 - **The README offered v0.8.1's DOI as this exact version.** `CITATION.cff` lists two
   identifiers: a concept DOI that resolves to the latest release, and a version DOI whose
   own description says it belongs to v0.8.1. The README offered the second as "this exact

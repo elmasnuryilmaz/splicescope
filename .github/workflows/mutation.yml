@@ -29,5 +29,5 @@ jobs:
           # the suite imports — `docs` included, for the tutorial-builder check
           pip install -e ".[dev,docs]"
 
-      - name: Break the code 113 ways and check the suite notices
+      - name: Break the code 115 ways and check the suite notices
         run: python validation/mutation_survey.py

@@ -388,6 +388,20 @@ All notable changes to this project are documented here. The format is based on
   exact version would have cited code two releases old. Only a release mints a new version
   DOI, so the fix is to say which version the existing one belongs to. A test now refuses
   a DOI that `CITATION.cff` attributes elsewhere being offered as the current one.
+- **A junction could be listed twice for one sample, and Ψ was then a share of nothing.**
+  The denominator sums every row at the splice site, so a repeated junction counts the
+  site twice: Ψ becomes its share of a total that is not the site's, the figures still
+  plot, the tests still pass, and the number is wrong. The simulator made them — its
+  deceptive-noise branch runs from an intron's known donor to a novel acceptor, which is
+  the shape of a cryptic exon's upstream junction, and on 8 of 30 seeds the two coincided
+  exactly, leaving one junction labelled both cryptic and noise. Events are written before
+  noise, so the real one now wins and the noise draw is skipped. `compute_psi` refuses such
+  a table outright, naming the junction and the sample: a STAR `SJ.out.tab` lists each
+  junction once, so a repeat is two files read under one name or a table concatenated with
+  itself. Found by re-deriving the beta-binomial's fitted group means by hand, on two units
+  where they disagreed; with the duplicates gone, 1,484 of them agree exactly. No committed
+  figure, notebook or documented table contained one — all six were checked — so nothing
+  here is rebuilt.
 - **A stop codon spanning the splice junction was never examined.** A ribosome reads the
   mature mRNA straight through, so a codon can begin in the last one or two bases of a
   cryptic exon and finish in the next one. `predict_consequence` searched the exon and

@@ -36,6 +36,36 @@ def _usage(df: pd.DataFrame, site_cols: list[str], min_reads: int) -> tuple[pd.S
 JUNCTION_KEY = ["chrom", "start", "end", "strand"]
 
 
+def _check_one_row_per_junction_per_sample(df: pd.DataFrame) -> None:
+    """Refuse a table that lists the same junction twice for the same sample.
+
+    A STAR ``SJ.out.tab`` names each junction once, so a repeat means two files were read
+    under one sample name or a table was concatenated with itself. It does not merely
+    double a count: the denominator below sums every row at the splice site, so the site
+    is counted twice and Ψ becomes the junction's share of a total that is not the site's.
+    Nothing else would look wrong.
+    """
+    if df.empty or "sample" not in df.columns:
+        return
+    key = JUNCTION_KEY + ["sample"]
+    if not set(key) <= set(df.columns):
+        return
+    repeated = df.duplicated(subset=key, keep=False)
+    if not repeated.any():
+        return
+    example = df.loc[repeated, key].iloc[0]
+    n = int(df.loc[repeated].groupby(key, observed=True).ngroups)
+    raise ValueError(
+        f"{n} junction(s) are listed more than once for the same sample, so Psi would be "
+        "a share of a splice-site total counted twice.\n"
+        f"  first one: {example['chrom']}:{example['start']}-{example['end']}"
+        f"{example['strand']} in sample {example['sample']!r}\n"
+        "  a STAR SJ.out.tab names each junction once per sample, so this is two files "
+        "read under one name, or a table concatenated with itself. Sum the counts per "
+        "junction and sample first if that is what you mean."
+    )
+
+
 def add_unobserved_zeros(df: pd.DataFrame) -> pd.DataFrame:
     """Make the zeros an aligner reports by omission explicit.
 
@@ -84,6 +114,7 @@ def compute_psi(
     :func:`add_unobserved_zeros`. Turn it off only to reproduce the pre-0.9.0
     behaviour, which silently discarded junctions absent from a whole group.
     """
+    _check_one_row_per_junction_per_sample(annotated)
     df = annotated.copy()
     # to_numpy() per column, not a value at a time: pandas 3 backs the strand column
     # with Arrow and reading a million values out of one costs four times this whole step.

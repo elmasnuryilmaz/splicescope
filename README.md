@@ -179,7 +179,7 @@ rather than only asserted.
 ## Testing
 
 ```bash
-pytest            # 345 tests: unit + property-based + end-to-end CLI runs
+pytest            # 348 tests: unit + property-based + end-to-end CLI runs
 ruff check .      # lint
 pytest --cov=splicescope   # 98 % of statements; CI fails below 90 %
 ```
@@ -200,7 +200,7 @@ columns it could not index — and sweeping the rest of the package for that sam
 turned up three more of it.
 
 A green suite says the tests pass, not that they would fail if the code broke. So the
-code is deliberately broken 113 ways and the suite has to notice:
+code is deliberately broken 115 ways and the suite has to notice:
 
 ```bash
 python validation/mutation_survey.py

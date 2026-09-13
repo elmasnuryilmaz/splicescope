@@ -108,10 +108,22 @@ def simulate_dataset(
             }
         )
 
+    #: (start, end, sample) already written, so the noise draw below cannot land on a
+    #: junction an event already made. It does: the deceptive branch runs from the
+    #: intron's known donor to a novel acceptor, which is the shape of a cryptic exon's
+    #: upstream junction, and on a quarter of seeds the two coincide exactly. The reader
+    #: then gets one junction labelled both cryptic and noise, and — worse — a splice
+    #: site whose total is counted twice, so Ψ is formed from a denominator that is not
+    #: the site's. Events are emitted before noise, so the real one wins.
+    written: set[tuple[int, int, str]] = set()
+
     def emit(start, end, motif, truth, per_sample_counts):
         for s, c in per_sample_counts.items():
             if c <= 0:
                 continue
+            if (int(start), int(end), s) in written:
+                continue
+            written.add((int(start), int(end), s))
             records.append(
                 {
                     "chrom": chrom,

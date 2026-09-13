@@ -180,6 +180,8 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
      'res["qvalue"] = benjamini_hochberg(res["pvalue"].to_numpy())',
      'res["qvalue"] = res["pvalue"].to_numpy()', "caught"),
     # ---- quantify -----------------------------------------------------------------
+    ("quantify", "a junction listed twice for one sample accepted",
+     "    _check_one_row_per_junction_per_sample(annotated)\n", "", "caught"),
     ("quantify", "coverage threshold made inclusive",
      "usage[totals < min_reads] = np.nan",
      "usage[totals <= min_reads] = np.nan", "caught"),
@@ -264,6 +266,9 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
      "        return res\n    res[\"qvalue\"]", "caught"),
     ("enrich", "the column order left to whenever qvalue was assigned",
      "    res = res[RESULT_COLUMNS]\n", "", "caught"),
+    ("simulate", "noise allowed to land on a junction an event already wrote",
+     "            if (int(start), int(end), s) in written:\n                continue\n",
+     "", "caught"),
     # ---- events -------------------------------------------------------------------
     ("events", "the chromosome dropped from the cassette key",
      "        by_start[(row.chrom, row.strand, row.start)].append(row.end)",

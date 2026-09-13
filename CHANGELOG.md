@@ -327,6 +327,28 @@ All notable changes to this project are documented here. The format is based on
   before it failed none.
 
 ### Fixed
+- **`min_samples` was a floor nothing tested at the floor.** Two of the new mutations
+  survived the suite and named it: a unit with *exactly* `min_samples` informative
+  replicates per group, and a unit that meets the floor in one group but not the other.
+  The existing test thins a unit to a single replicate, which never asks what happens at
+  the boundary, and it covers the rank test while the count model applies the same floor
+  in its own line. Both are now checked, for both tests.
+- **The Nextflow pipeline and the command line restated each other's numbers.**
+  `params.min_reads` is passed straight to `splicescope run`, so the two are the same
+  analysis only while their defaults match — one fact in two files with nothing tying
+  them. And the pipeline manifest declared version `0.1.0` across five releases of the
+  package it ships inside: not a separately numbered thing, since nothing else in the
+  repository tracks it, but a placeholder nobody had cause to look at. It is the package's
+  version now, and a test is the cause.
+- **The Python floor was written in four places and tied by a comment.** `requires-python`
+  is the promise, the CI matrix is what keeps it, the oldest-dependency job is what proves
+  it, and the README badge is what a reader believes. Checked against each other now; all
+  four ways of disagreeing were tried.
+- **The README quotes the dashboard's opening sentence, numbers and all.** *"The first
+  premature stop appears 63 nucleotides in, 355 before the last exon-exon junction"* comes
+  out of the analysis, so a change to it would have turned the pitch into a quotation of
+  something the page never says. The test reproduces the page's default state and its
+  ordering and checks both numbers.
 - **The cryptic score table left its ties in whatever order the rows arrived in.** A
   forest that is certain gives several junctions exactly the same score, and sorting on
   the score alone decided nothing about their order — so the top of the table, which is

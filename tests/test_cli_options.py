@@ -384,3 +384,32 @@ def test_the_coverage_floor_the_readme_quotes_is_the_one_ci_enforces():
     assert quoted.group(1) == enforced.group(1), (
         f"the README says {quoted.group(1)} %, CI enforces {enforced.group(1)} %"
     )
+
+
+def test_the_pipeline_and_the_command_line_agree_on_the_coverage_threshold():
+    """`nextflow/main.nf` declares `params.min_reads` and passes it to `splicescope run`,
+    so the pipeline and the command line are the same analysis only while their defaults
+    match. It is one fact written in two files with nothing tying them together: change
+    the command line's and the pipeline goes on measuring Ψ at the old threshold, below
+    which a splice site yields no value at all.
+    """
+    import re
+
+    from splicescope.cli import build_parser
+
+    parsed = build_parser().parse_args(
+        ["run", "--sj-dir", "x", "--gtf", "y", "--groups", "z", "--outdir", "w"]
+    )
+    default = parsed.min_reads
+    assert isinstance(default, int), "the run command no longer takes --min-reads"
+
+    pipeline = (Path(__file__).resolve().parent.parent / "nextflow" / "main.nf").read_text()
+    declared = re.search(r"params\.min_reads\s*=\s*(\d+)", pipeline)
+    assert declared, "the pipeline no longer declares min_reads"
+    assert int(declared.group(1)) == default, (
+        f"the pipeline defaults to {declared.group(1)} reads and the command line to "
+        f"{default}; the same data would give a different Ψ"
+    )
+    assert "--min-reads ${params.min_reads}" in pipeline, (
+        "the pipeline declares the parameter but no longer passes it on"
+    )

@@ -604,3 +604,59 @@ def test_the_public_api_the_package_advertises_is_the_one_it_has():
     assert len(named) >= 8, f"the pipeline table has shrunk to {len(named)} rows"
     absent = [m for m in named if not (ROOT / "src" / "splicescope" / f"{m}.py").exists()]
     assert not absent, f"the pipeline table names modules that do not exist: {absent}"
+
+
+def test_the_pipeline_declares_the_version_the_package_is():
+    """`nextflow/nextflow.config` carries a manifest version that Nextflow prints on every
+    run. It said 0.1.0 across five releases of the package it ships inside — not a
+    separately numbered thing, since nothing else in the repository tracks it, but a
+    placeholder nobody had cause to look at. It is the package's version now, and this is
+    what gives anyone cause.
+    """
+    import re
+
+    from splicescope import __version__ as version
+
+    config = (ROOT / "nextflow" / "nextflow.config").read_text()
+    declared = re.search(r"version\s*=\s*'([^']+)'", config)
+    assert declared, "the pipeline manifest no longer declares a version"
+    assert declared.group(1) == version, (
+        f"the pipeline says {declared.group(1)} and the package is {version}"
+    )
+
+
+def test_the_python_floor_is_the_same_in_all_three_places_it_is_written():
+    """`requires-python` is the promise; the CI matrix is what keeps it, the `oldest` job
+    is what proves it, and the README badge is what a reader believes. Four places, one
+    number, and the only thing tying them was a comment.
+    """
+    import re
+
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # pragma: no cover - only on Python 3.10
+        import tomli as tomllib
+
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
+    floor = re.fullmatch(r">=(\d+\.\d+)", project["requires-python"].strip())
+    assert floor, f"requires-python is {project['requires-python']!r}, not a simple floor"
+    declared = floor.group(1)
+
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    matrix = re.search(r'python-version: \[(.+?)\]', workflow)
+    assert matrix, "the test matrix no longer lists Python versions"
+    versions = re.findall(r'"([\d.]+)"', matrix.group(1))
+    assert min(versions, key=lambda v: tuple(map(int, v.split(".")))) == declared, (
+        f"the matrix starts at {versions[0]} and the package claims {declared}"
+    )
+
+    oldest = re.search(r'python-version: "([\d.]+)"\s*#\s*requires-python', workflow)
+    assert oldest and oldest.group(1) == declared, (
+        "the oldest-dependency job no longer installs the declared floor"
+    )
+
+    badge = re.search(r"badge/python-([\d.]+)%2B", (ROOT / "README.md").read_text())
+    assert badge and badge.group(1) == declared, (
+        f"the README badge says {badge.group(1) if badge else 'nothing'}, "
+        f"the package claims {declared}"
+    )

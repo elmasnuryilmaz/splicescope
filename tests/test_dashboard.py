@@ -164,3 +164,44 @@ def test_the_page_tests_for_a_missing_value_in_a_way_that_cannot_raise():
         "compare with pd.isna instead of a value against itself: " + "; ".join(offenders)
     )
     assert "pd.isna(" in APP.read_text(), "and it is asked somewhere"
+
+
+def test_the_sentence_the_readme_quotes_is_the_one_the_page_opens_with():
+    """The README sells the dashboard with the sentence it shows first, numbers and all —
+    "the first premature stop appears 63 nucleotides in, 355 before the last exon-exon
+    junction". Those come out of the analysis, so a change to it silently turns the pitch
+    into a quotation of something the page never says. This reproduces the page's default
+    state and its ordering, and checks the two numbers the README repeats.
+    """
+    import re
+
+    from splicescope.consequence import describe
+    from splicescope.demo import run_demo
+
+    result = run_demo(n_genes=20, n_per_group=6, cryptic_fraction=0.6,
+                      label_noise=0.12, seed=11)
+    table = result.consequences.copy()
+    assert not table.empty, "the page has a cassette exon to open with"
+    if result.event_differential is not None and "event_id" in table.columns:
+        table = table.merge(
+            result.event_differential[["event_id", "delta_psi", "pvalue", "qvalue"]],
+            on="event_id", how="left",
+        )
+    table = table.sort_values(
+        ["nmd_predicted", "qvalue"], ascending=[False, True], na_position="last"
+    ).reset_index(drop=True)
+    sentence = describe(table.iloc[0])
+
+    # the README line-wraps, so the quote spans newlines in the file
+    readme = " ".join((APP.parent.parent / "README.md").read_text().split())
+    quoted = re.search(
+        r"the first premature stop appears (\d+) nucleotides in, (\d+) before", readme
+    )
+    assert quoted, "the README no longer quotes the page's opening sentence"
+    offset, distance = quoted.group(1), quoted.group(2)
+    assert f"{offset} nucleotides in" in sentence, (
+        f"the README quotes {offset} nucleotides in; the page says:\n  {sentence}"
+    )
+    assert f"{distance} nucleotides before" in sentence, (
+        f"the README quotes {distance} before; the page says:\n  {sentence}"
+    )

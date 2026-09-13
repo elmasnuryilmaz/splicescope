@@ -179,7 +179,7 @@ rather than only asserted.
 ## Testing
 
 ```bash
-pytest            # 354 tests: unit + property-based + end-to-end CLI runs
+pytest            # 360 tests: unit + property-based + end-to-end CLI runs
 ruff check .      # lint
 pytest --cov=splicescope   # 98 % of statements; CI fails below 90 %
 ```

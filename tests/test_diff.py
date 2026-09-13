@@ -460,3 +460,35 @@ def test_the_invariant_filter_leaves_a_table_with_nothing_to_drop_alone():
     plain = differential_splicing(psi, _groups(psi), test="ranksum")
     assert len(filtered) == len(plain) == 5
     assert np.allclose(filtered["qvalue"], plain["qvalue"])
+
+
+@pytest.mark.parametrize("test", ["betabinom", "ranksum"])
+def test_min_samples_is_a_floor_in_both_groups_not_a_total(test):
+    """Two mutations survived the suite and named these: a unit with *exactly*
+    `min_samples` informative replicates per group is kept, and a unit that meets the
+    floor in one group but not the other is dropped rather than tested on one side.
+
+    The existing test thins a unit to a single replicate, which never asks what happens
+    at the boundary; and it covers the rank test, while the count model applies the same
+    floor in its own line.
+    """
+    from splicescope.diff import differential_splicing
+
+    psi = _counts_table(n_units=3)
+    if test == "ranksum":
+        psi = psi.drop(columns=["count", "donor_total"])
+    groups = _groups(psi)
+
+    # unit 1010: exactly two informative samples in each group
+    # unit 1020: two in the control, one in the knockdown
+    thin = psi[
+        ~((psi["start"] == 1010) & psi["sample"].isin(["C3", "K3"]))
+        & ~((psi["start"] == 1020) & psi["sample"].isin(["C3", "K2", "K3"]))
+    ]
+    out = differential_splicing(thin, groups, test=test, min_samples=2)
+
+    assert set(out["start"]) == {1000, 1010}, (
+        "the unit at the floor is kept and the one-sided unit is dropped"
+    )
+    at_floor = out[out["start"] == 1010].iloc[0]
+    assert at_floor["n_a"] == 2 and at_floor["n_b"] == 2, "counted per group, not pooled"

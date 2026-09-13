@@ -277,8 +277,9 @@ the same signal is not reported twice.
 **Mutually exclusive exons (MXE).** An MXE is two non-overlapping exons, A (upstream) and
 B (downstream), that lie between the *same* upstream donor and downstream acceptor and are
 normally never included together (so, unlike a cassette, there is no exon-skipping
-junction). Each exon is reached by its own inclusion-junction pair; Ψ reports exon A's
-share, `Ψ = incl(A) / (incl(A) + incl(B))`. Detection groups every exon that connects a
+junction). Each exon is reached by its own inclusion-junction pair, and `incl` is the
+mean of that pair's counts as it is for a cassette; Ψ reports exon A's share,
+`Ψ = incl(A) / (incl(A) + incl(B))`. Detection groups every exon that connects a
 given donor→acceptor pair and emits an MXE when two of them are non-overlapping; junctions
 already claimed by a cassette event are excluded first.
 

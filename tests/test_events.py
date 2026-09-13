@@ -768,3 +768,84 @@ def test_an_alternative_site_detector_is_asked_for_one_of_the_two_kinds():
     for wrong in ("A5", "a5ss", "SE", ""):
         with pytest.raises(ValueError, match="A5SS"):
             detect_alt_ss_events(frame, wrong)
+
+
+def test_every_event_psi_is_recomputed_from_the_junction_counts():
+    """The four formulas of METHODS §5b, written out here and compared.
+
+    This is the technique that found the junction-spanning stop codon in the consequence
+    layer: a second implementation of the rule rather than a second call into the first.
+    Ψ is what every event-level number in this package rests on, so it is worth doing
+    twice — and doing it here also pins the documented formulas to the code, since a
+    change to either without the other fails.
+    """
+    from collections import defaultdict
+
+    import numpy as np
+
+    from splicescope.annotate import annotate_junctions
+    from splicescope.events import detect_events, event_psi
+    from splicescope.io import donor_acceptor
+    from splicescope.simulate import simulate_dataset
+
+    seen = defaultdict(int)
+    for seed in (3, 11):
+        ds = simulate_dataset(n_genes=24, n_per_group=3, cryptic_fraction=0.7,
+                              alt_ss_fraction=0.5, mxe_fraction=0.4, seed=seed)
+        annotated = annotate_junctions(ds.observed, ds.known)
+        events = detect_events(annotated)
+        measured = event_psi(annotated, events, min_reads=1)
+
+        reads = defaultdict(float)
+        at_site = defaultdict(float)
+        for row in annotated.itertuples(index=False):
+            reads[(row.chrom, row.start, row.end, row.strand, row.sample)] += row.count
+            donor, acceptor = donor_acceptor(row.start, row.end, row.strand)
+            at_site[(row.chrom, "donor", donor, row.strand, row.sample)] += row.count
+            at_site[(row.chrom, "acceptor", acceptor, row.strand, row.sample)] += row.count
+
+        by_id = {row.event_id: row for row in events.itertuples(index=False)}
+        for row in measured.itertuples(index=False):
+            event = by_id[row.event_id]
+
+            def junction(start, end, event=event, sample=row.sample, reads=reads):
+                return reads.get(
+                    (event.chrom, int(start), int(end), event.strand, sample), 0.0
+                )
+
+            if event.event_type == "SE":
+                # inclusion is the mean of the two flanking junctions, against the skip
+                inclusion = (junction(event.inc1_start, event.inc1_end)
+                             + junction(event.inc2_start, event.inc2_end)) / 2
+                total = inclusion + junction(event.skip_start, event.skip_end)
+            elif event.event_type == "MXE":
+                # exon A's share; neither exon has a skipping junction
+                inclusion = (junction(event.a_j1_start, event.a_j1_end)
+                             + junction(event.a_j2_start, event.a_j2_end)) / 2
+                total = inclusion + (junction(event.b_j1_start, event.b_j1_end)
+                                     + junction(event.b_j2_start, event.b_j2_end)) / 2
+            else:
+                # the longer isoform's share of every read at the site the two share
+                inclusion = junction(event.incl_start, event.incl_end)
+                total = at_site.get(
+                    (event.chrom, event.site_kind, int(event.site_pos), event.strand,
+                     row.sample),
+                    0.0,
+                )
+            expected = inclusion / total if total >= 1 else float("nan")
+
+            if np.isnan(expected):
+                assert np.isnan(row.psi), f"{row.event_id} in {row.sample}"
+            else:
+                assert np.isclose(expected, row.psi, atol=1e-9), (
+                    f"{event.event_type} {row.event_id} in {row.sample}: "
+                    f"expected {expected}, got {row.psi}"
+                )
+            seen[event.event_type] += 1
+
+    assert set(seen) == {"SE", "MXE", "A5SS", "A3SS"}, f"only checked {sorted(seen)}"
+    assert min(seen.values()) >= 10, f"too few of some type: {dict(seen)}"
+    # the shared site is the one the definition names, not whichever came first
+    kinds = {(r.event_type, r.site_kind) for r in events.itertuples(index=False)
+             if r.event_type in ("A5SS", "A3SS")}
+    assert kinds == {("A5SS", "acceptor"), ("A3SS", "donor")}

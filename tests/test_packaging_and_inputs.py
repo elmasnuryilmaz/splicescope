@@ -571,3 +571,36 @@ def test_the_job_that_runs_the_suite_installs_what_the_suite_imports():
             f"{doc} tells a reader to install {sorted(offered)}, which leaves out "
             + ", ".join(sorted(needed.keys() - offered))
         )
+
+
+def test_the_public_api_the_package_advertises_is_the_one_it_has():
+    """`splicescope/__init__.py` opens with the list a reader meets first, and nothing
+    checked that its eleven entries resolve. A name that has been renamed or moved sends
+    them to an ImportError on their first line, which is a bad way to learn what a package
+    does. Each is looked up on the real module, so a docstring entry cannot outlive it.
+    """
+    import importlib
+    import re
+
+    import splicescope
+
+    listed = re.findall(r":func:`splicescope\.(\w+)\.(\w+)`", splicescope.__doc__ or "")
+    assert len(listed) >= 10, f"the Public API list has shrunk to {len(listed)} entries"
+
+    missing = []
+    for module_name, attribute in listed:
+        try:
+            module = importlib.import_module(f"splicescope.{module_name}")
+        except ImportError:
+            missing.append(f"splicescope.{module_name} does not import")
+            continue
+        if not callable(getattr(module, attribute, None)):
+            missing.append(f"splicescope.{module_name}.{attribute}")
+    assert not missing, "advertised but not there: " + ", ".join(missing)
+
+    # the README's pipeline table names modules too, and a stage that was renamed would
+    # leave a row pointing at nothing
+    named = re.findall(r"^\| \*\*[\w /]+\*\* \| `(\w+)` \|", (ROOT / "README.md").read_text(), re.M)
+    assert len(named) >= 8, f"the pipeline table has shrunk to {len(named)} rows"
+    absent = [m for m in named if not (ROOT / "src" / "splicescope" / f"{m}.py").exists()]
+    assert not absent, f"the pipeline table names modules that do not exist: {absent}"

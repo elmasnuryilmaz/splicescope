@@ -142,3 +142,56 @@ def test_a_junction_on_a_contig_the_annotation_does_not_cover_is_ordinary():
     known = pd.DataFrame([dict(chrom="chr1", start=200, end=399, strand="+", gene_id="G1")])
     out = annotate_junctions(observed, known)
     assert list(out["sclass"]) == ["cryptic", "annotated"]
+
+
+def test_every_junction_is_classified_by_the_rule_the_methods_table_states():
+    """METHODS §3's five rules, written out here and applied to simulated data.
+
+    The existing tests build a junction per class by hand, which checks each rule once on
+    an input chosen to exercise it. This applies all five to whatever the simulator emits,
+    from the annotation alone — a second reading of the table rather than a second call
+    into the code that implements it, so a rule and its documentation cannot drift apart
+    without one of them failing.
+    """
+    from splicescope.annotate import annotate_junctions
+    from splicescope.io import donor_acceptor
+    from splicescope.simulate import simulate_dataset
+
+    #: (junction known, donor known, acceptor known) -> the class the table names
+    rules = {
+        (True, True, True): "annotated",
+        (False, True, True): "novel_combination",
+        (False, True, False): "novel_acceptor",
+        (False, False, True): "novel_donor",
+        (False, False, False): "cryptic",
+    }
+
+    seen = {}
+    for seed in (5, 13):
+        ds = simulate_dataset(n_genes=30, n_per_group=3, cryptic_fraction=0.7,
+                              alt_ss_fraction=0.5, seed=seed)
+        junctions, donors, acceptors = set(), set(), set()
+        for row in ds.known.itertuples(index=False):
+            junctions.add((row.chrom, row.start, row.end, row.strand))
+            donor, acceptor = donor_acceptor(row.start, row.end, row.strand)
+            donors.add((row.chrom, donor, row.strand))
+            acceptors.add((row.chrom, acceptor, row.strand))
+
+        annotated = annotate_junctions(ds.observed, ds.known)
+        unique = annotated.drop_duplicates(subset=["chrom", "start", "end", "strand"])
+        for row in unique.itertuples(index=False):
+            donor, acceptor = donor_acceptor(row.start, row.end, row.strand)
+            expected = rules[(
+                (row.chrom, row.start, row.end, row.strand) in junctions,
+                (row.chrom, donor, row.strand) in donors,
+                (row.chrom, acceptor, row.strand) in acceptors,
+            )]
+            assert expected == row.sclass, (
+                f"{row.chrom}:{row.start}-{row.end}{row.strand}: "
+                f"the table says {expected}, the code says {row.sclass}"
+            )
+            seen[expected] = seen.get(expected, 0) + 1
+
+    # the simulator makes no novel_combination — see METHODS §8 — so four of the five
+    assert set(seen) == {"annotated", "novel_acceptor", "novel_donor", "cryptic"}
+    assert min(seen.values()) >= 20, f"too few of some class to mean much: {seen}"

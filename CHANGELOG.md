@@ -388,6 +388,21 @@ All notable changes to this project are documented here. The format is based on
   exact version would have cited code two releases old. Only a release mints a new version
   DOI, so the fix is to say which version the existing one belongs to. A test now refuses
   a DOI that `CITATION.cff` attributes elsewhere being offered as the current one.
+- **Event PSI is re-derived from the junction counts, for all four types.** The technique
+  that found the junction-spanning stop codon, applied to the other computation every
+  event-level number rests on: the four formulas of METHODS §5b written out in the test
+  rather than called into. They agreed on 1,368 values — and two of the rules they check
+  had no test at all before, which breaking them showed. That a cassette's inclusion is
+  the *mean* of its two junctions was documented; that an MXE's is too was not, and now is.
+- **The junction taxonomy is re-derived from the METHODS table.** The existing tests build
+  one junction per class by hand, which checks each rule once on an input chosen to
+  exercise it. This applies all five to whatever the simulator emits, so a rule and its
+  documentation cannot drift apart without one of them failing. 1,063 junctions, no
+  disagreement.
+- **The Public API list in `splicescope/__init__.py` is checked against the package.** It
+  is the first thing a reader meets and nothing verified that its eleven entries resolve,
+  so a renamed function would have sent them to an `ImportError` on their first line. The
+  modules named in the README's pipeline table are checked the same way.
 - **A junction could be listed twice for one sample, and Ψ was then a share of nothing.**
   The denominator sums every row at the splice site, so a repeated junction counts the
   site twice: Ψ becomes its share of a total that is not the site's, the figures still

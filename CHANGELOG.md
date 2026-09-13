@@ -327,6 +327,16 @@ All notable changes to this project are documented here. The format is based on
   before it failed none.
 
 ### Fixed
+- **CI runs the tutorial and fails if it no longer prints what the code prints.** The
+  test added with the entry below compares the notebook's *cells* against its builder,
+  which catches a notebook hand-edited in Jupyter but not a change to the analysis: the
+  committed numbers then go stale with nothing to notice, which is the drift that started
+  all this. `python examples/_build_tutorial.py --check` executes the notebook and
+  compares what it printed, and a job runs it on every push. Only the text is compared —
+  the embedded figures are PNGs whose bytes depend on the platform's font rendering, so a
+  laptop and a CI runner would differ for no reason worth failing over, and the figures
+  are listed in `CONTRIBUTING.md` to rebuild by hand instead. Verified by planting the
+  very number that drifted: the check reports it and exits 1.
 - **Rebuilding the tutorial is now a meaningful check.** `examples/tutorial.ipynb`
   ships its executed outputs, which are a claim about what the current code does — but
   the claim was not checkable, because every rebuild rewrote 24 random cell ids and four

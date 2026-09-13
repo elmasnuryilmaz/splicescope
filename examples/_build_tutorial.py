@@ -1,13 +1,24 @@
 """Build and execute examples/tutorial.ipynb (reproducible, outputs embedded).
 
-    python examples/_build_tutorial.py
+    python examples/_build_tutorial.py            # rebuild it
+    python examples/_build_tutorial.py --check    # rebuild and compare, writing nothing
 
 Constructs the tutorial notebook cell-by-cell with nbformat, runs it in the
 project kernel so every figure and table is captured, then writes the .ipynb.
+
+``--check`` is what CI runs. A test already verifies that the committed notebook is the
+one this builder produces, but it compares the *cells*, not what running them prints — so
+a change to the analysis leaves the committed numbers stale and nothing notices. That is
+not hypothetical: the notebook reported 43 significant junctions for a while where the
+code found 46. Only the text outputs are compared, because the embedded figures are PNGs
+whose bytes depend on the platform's font rendering and would differ between a laptop and
+a CI runner for no reason worth failing over.
 """
 
 from __future__ import annotations
 
+import argparse
+import sys
 from pathlib import Path
 
 import nbformat
@@ -260,14 +271,51 @@ def _make_reproducible(nb: nbformat.NotebookNode) -> None:
         cell.get("metadata", {}).pop("execution", None)
 
 
-def main() -> None:
+def _text_outputs(nb) -> list[str]:
+    """Everything the notebook printed, in order, with the figures left out."""
+    printed = []
+    for index, cell in enumerate(nb["cells"]):
+        for output in cell.get("outputs", []):
+            data = output.get("data", {})
+            text = "".join(output.get("text", [])) or "".join(data.get("text/plain", []))
+            if text and not text.startswith("<Figure size"):
+                printed.append(f"cell {index}:\n{text.rstrip()}")
+    return printed
+
+
+def check(nb) -> int:
+    """Compare a freshly executed notebook against the committed one. 0 if they agree."""
+    import difflib
+    import json
+
+    committed = _text_outputs(json.loads(OUT.read_text()))
+    fresh = _text_outputs(nb)
+    if committed == fresh:
+        print(f"the committed notebook prints what the code prints ({len(fresh)} outputs)")
+        return 0
+    diff = difflib.unified_diff(committed, fresh, "committed", "just now", lineterm="")
+    print("the committed notebook no longer prints what the code prints:\n")
+    print("\n".join(list(diff)[:60]))
+    print("\n  rerun: python examples/_build_tutorial.py")
+    return 1
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check", action="store_true",
+                        help="compare against the committed notebook, write nothing")
+    args = parser.parse_args()
+
     nb = build()
     print(f"executing {len(nb.cells)} cells ...")
     NotebookClient(nb, timeout=600, kernel_name="splicescope-venv").execute()
     _make_reproducible(nb)
+    if args.check:
+        return check(nb)
     nbformat.write(nb, OUT)
     print(f"wrote {OUT}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

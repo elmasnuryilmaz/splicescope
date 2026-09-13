@@ -97,6 +97,32 @@ jobs:
       - name: Render the dashboard
         run: pytest tests/test_dashboard.py -q
 
+  tutorial:
+    # The suite checks that the committed notebook is the one its builder produces, but
+    # by comparing the cells rather than what running them prints. A change to the
+    # analysis therefore leaves the committed numbers stale with nothing to notice — the
+    # notebook reported 43 significant junctions for a while where the code found 46.
+    # This executes it and compares the printed output, which unlike the embedded figures
+    # does not depend on the platform's font rendering.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install with the notebook tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,docs]"
+          python -m ipykernel install --user --name splicescope-venv
+
+      - name: The committed tutorial must print what the code prints
+        run: python examples/_build_tutorial.py --check
+
   nextflow:
     # The pipeline's real-data branch was broken from the day it was written until
     # 0.9.0, because nothing ever ran it. Both branches are exercised here.

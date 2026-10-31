@@ -21,13 +21,13 @@ bibliography: paper.bib
 
 # Summary
 
-Most human genes are cut and re-joined in more than one way before they are translated
+Most human multi-exon genes are cut and re-joined in more than one way before they are translated
 into protein, a process called splicing. When a regulator of splicing is lost, cells can
 start using splice sites that are normally silent and include stretches of intron in the
 mature message. These "cryptic exons" are a hallmark of neurodegenerative diseases such as
 amyotrophic lateral sclerosis (ALS) and frontotemporal dementia, where loss of the RNA
 binding protein TDP-43 switches them on in genes needed by neurons
-[@Klim2019; @Melamed2019; @Ma2022; @Brown2022]. Two questions follow for every candidate:
+[@Ling2015; @Klim2019; @Melamed2019; @Ma2022; @Brown2022]. Two questions follow for every candidate:
 is the event real rather than sequencing noise, and what does it do to the protein?
 
 `splicescope` is a Python package that answers both from data most RNA sequencing
@@ -63,7 +63,9 @@ with coverage and not only with the number of replicates.
 
 Third, detecting an event says nothing about its consequence. Whether a cryptic exon is
 tolerated, shifts the frame or triggers NMD decides whether it depletes the protein, as for
-the TDP-43 targets *STMN2* and *UNC13A* [@Klim2019; @Melamed2019; @Ma2022; @Brown2022].
+the TDP-43 target *UNC13A*, whose cryptic exon introduces a premature stop codon
+[@Ma2022; @Brown2022]. Other routes exist: *STMN2* is lost through premature
+polyadenylation [@Klim2019; @Melamed2019], which this prediction does not model.
 `splicescope` predicts this for cassette exons and also for splice-site shifts (novel
 donors and acceptors that extend or truncate an exon), using the position of the first
 premature stop relative to the last exon-exon junction [@NagyMaquat1998]. The
@@ -79,9 +81,7 @@ quantifies intron excision within clusters of overlapping introns without relyin
 annotation. MAJIQ [@VaqueroGarcia2016] models local splicing variations that go beyond
 binary event types. SUPPA2 [@Trincado2018] derives percent-spliced-in from transcript
 abundance estimates and tests differences quickly across conditions. These tools are
-mature, and `splicescope` does not aim to replace them for discovery: its event-level
-results on a real dataset were of the same order of magnitude as rMATS on the same
-alignments (see Research impact statement).
+mature, and `splicescope` does not aim to replace them for discovery.
 
 Prediction of functional consequence is less well served. IsoformSwitchAnalyzeR
 [@VittingSeerup2019] predicts NMD sensitivity and protein features for switches between
@@ -125,11 +125,12 @@ aligner omits a junction when it has no reads.
 
 The classifier is included but held to the same standard as the statistics. It is
 evaluated by cross-validation with feature scaling fitted inside each fold and is shipped
-with a model card, and the validation, which held whole genes out of each training fold,
-reports that it ranks independently replicating events worse than the
-differential statistic does, because its features describe whether a junction is plausible
-rather than whether it changes between conditions. It is documented as a noise filter,
-not as the way to find cryptic events.
+with a model card. The validation, which held whole genes out of each training fold,
+reports that it ranks confidently replicating events far worse than the differential
+statistic does (average precision 0.006 against 0.062) and becomes competitive only under
+a permissive definition of replication, because its features describe whether a junction
+is plausible rather than whether it changes between conditions. It is documented as a
+noise filter, not as the way to find cryptic events.
 
 Correctness is checked at several levels. The simulator writes a genome whose coding exons
 are built from sense codons with canonical intron ends, so the consequence layer is tested
@@ -146,30 +147,34 @@ by tests against the code that produces them.
 
 `splicescope` is early-stage software. Its evidence of significance is a reproducible
 validation on public data rather than adoption by other groups. The figures below were
-measured with versions up to 0.8.1; `validation/README.md` lists the later corrections that
-will move them when re-run.
+measured with versions up to 0.8.1; `validation/README.md` lists the later corrections
+that will move them when re-run.
 
-On a TDP-43 knockdown in human cells (GEO GSE245332, three replicates per group, aligned
-with HISAT2 and analysed with the GENCODE annotation [@Frankish2019]), a rank test found no significant junctions,
-as the bound above predicts, whereas the count-based test recovered known TDP-43 cryptic
-splicing targets including *STMN2*, *HDGFL2*, *PFKP*, *ARHGAP32*, *KALRN*, *AGRN*, *ATG4B*
-and *RAP1GAP*. The whole pipeline ran on the six samples in about 1.5 minutes on a laptop.
-Replication in a second experiment (GSE122069, from @Melamed2019) provided the
-non-circular label used to evaluate the classifier.
+On a TDP-43 knockdown in human cells (GEO GSE245332 [@Hou2024], three replicates per
+group, aligned with HISAT2 and analysed with the GENCODE annotation [@Frankish2019]), a
+rank test found no significant junctions among 138,643 tested, as the bound above
+predicts, whereas the count-based test recovered known TDP-43 cryptic splicing targets
+including *STMN2*, *HDGFL2*, *PFKP*, *ARHGAP32*, *KALRN*, *AGRN*, *ATG4B* and *RAP1GAP*.
+The whole pipeline ran on the six samples in about 1.5 minutes on a laptop. Replication in
+a second experiment (GSE122069, from @Melamed2019) provided the non-circular label used to
+evaluate the classifier.
 
 The NMD prediction was compared with external measurements from two independent
-experiments in which NMD was blocked in TDP-43-depleted neurons
-[@Sinha2025; @Zeng2025]. Among 356 cassette exons with a measured change, the 275
-predicted to carry an NMD-triggering stop codon gained more on NMD blockade than the 68
-where no stop was possible (area under the ROC curve 0.675, 95% bootstrap interval 0.601
-to 0.752). For
-3,419 interpretable splice-site shifts, predicted NMD targets were NMD-sensitive more often
-than events where no stop was possible (48.5% against 23.5%, odds ratio 3.07). The same
-analyses show the limit of the call: sensitivity is high and specificity low, because a
-random intronic interval read in a fixed frame usually contains a stop codon. The
-documentation therefore recommends using the prediction to interpret events that are
-already significant, not to rank candidates. The per-event tables and the script that
-regenerates every one of these numbers are in the repository.
+experiments in which NMD was blocked in TDP-43-depleted neurons [@Sinha2025; @Zeng2025].
+Among 356 cassette exons with a measured change, the 275 predicted to carry an
+NMD-triggering stop codon gained more on NMD blockade than the 68 where no stop was
+possible (area under the ROC curve, AUROC, 0.675; 95% bootstrap interval 0.601 to 0.752).
+On the 348 of these exons that LeafCutter2 [@BuenAbadNajar2025] also labels, the
+`splicescope` NMD call separated NMD sensitivity about as well as LeafCutter2's
+unproductive-versus-productive label (AUROC 0.684 and 0.697; the latter leaves out the 87
+exons LeafCutter2 places in neither class), and the two agreed on 85% of the 261 exons it
+does place. For 3,419 interpretable splice-site shifts, predicted NMD targets were
+NMD-sensitive more often than events where no stop was possible (48.5% against 23.5%, odds
+ratio 3.07). The same analyses show the limit of the call: sensitivity is high and
+specificity low, because a random intronic interval read in a fixed frame usually contains
+a stop codon. The documentation therefore recommends using the prediction to interpret
+events that are already significant, not to rank candidates. The per-event tables and the
+script that regenerates every one of these numbers are in the repository.
 
 <!-- Before submission: add concrete evidence of research use (a thesis chapter, preprint
 or analysis that used splicescope, and any users outside the author's group), and state
@@ -180,7 +185,11 @@ preparation. JOSS screens for this; see the eligibility notes in pull request #1
 
 Generative AI (Claude Code, Anthropic) was used to assist with software development,
 testing, documentation and the preparation of this paper. The author reviewed and edited
-all AI-assisted output and takes full responsibility for the software and the paper.
+all AI-assisted output. The correctness of that output was checked by the automated test
+suite and continuous integration described above, by regenerating the quoted
+NMD-validation numbers from the committed tables, and by checking every reference against
+a bibliographic record. The author takes full responsibility for the software and the
+paper.
 
 # Acknowledgements
 

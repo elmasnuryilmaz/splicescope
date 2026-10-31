@@ -150,13 +150,13 @@ validation on public data rather than adoption by other groups. The figures belo
 measured with versions up to 0.8.1; `validation/README.md` lists the later corrections
 that will move them when re-run.
 
-On a TDP-43 knockdown in human cells (GEO GSE245332 [@Hou2024], three replicates per
-group, aligned with HISAT2 and analysed with the GENCODE annotation [@Frankish2019]), a
+On a TDP-43 knockdown in human cells, GEO GSE245332 [@Hou2024], with three replicates per
+group aligned with HISAT2 and analysed with the GENCODE annotation [@Frankish2019], a
 rank test found no significant junctions among 138,643 tested, as the bound above
 predicts, whereas the count-based test recovered known TDP-43 cryptic splicing targets
 including *STMN2*, *HDGFL2*, *PFKP*, *ARHGAP32*, *KALRN*, *AGRN*, *ATG4B* and *RAP1GAP*.
 The whole pipeline ran on the six samples in about 1.5 minutes on a laptop. Replication in
-a second experiment (GSE122069, from @Melamed2019) provided the non-circular label used to
+a second experiment, GSE122069 [@Melamed2019], provided the non-circular label used to
 evaluate the classifier.
 
 The NMD prediction was compared with external measurements from two independent

@@ -24,6 +24,17 @@ params.gtf        = null
 params.groups     = null
 params.genome     = null   // indexed FASTA; enables protein-consequence prediction
 params.min_reads  = 10
+params.install_splicescope = false   // set by the docker profile; see installCommand()
+
+// With the docker profile each task first installs the splicescope release that matches
+// this pipeline's version. The install is part of the task script, so it runs inside the
+// throwaway container, never in the user's own environment (a beforeScript would run on
+// the host). Without the profile this is empty and splicescope must already be installed.
+def installCommand() {
+    params.install_splicescope
+        ? "pip install --quiet --no-cache-dir --disable-pip-version-check --root-user-action=ignore 'splicescope==${workflow.manifest.version}'"
+        : ''
+}
 
 process SIMULATE {
     tag 'simulate'
@@ -37,6 +48,7 @@ process SIMULATE {
 
     script:
     """
+    ${installCommand()}
     splicescope simulate --outdir demo_data \\
         --genes ${params.genes} --replicates ${params.replicates}
     """
@@ -58,6 +70,7 @@ process SPLICESCOPE_RUN {
 
     script:
     """
+    ${installCommand()}
     splicescope run \\
         --sj-dir ${sj_dir} \\
         --gtf ${gtf} \\

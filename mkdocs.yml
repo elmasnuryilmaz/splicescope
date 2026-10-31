@@ -1,0 +1,102 @@
+site_name: splicescope
+site_description: Detect, quantify and characterize alternative and cryptic splicing events from splice junctions.
+site_author: Elmasnur Yılmaz
+site_url: https://elmasnuryilmaz.github.io/splicescope/
+repo_url: https://github.com/elmasnuryilmaz/splicescope
+repo_name: elmasnuryilmaz/splicescope
+edit_uri: edit/main/docs/
+copyright: Copyright &copy; 2026 Elmasnur Yılmaz. MIT License.
+
+docs_dir: docs
+# docs/ also holds the scripts that draw its figures; they are not pages.
+exclude_docs: |
+  *.py
+
+# Includes the README and other repository files into pages, rewrites their relative
+# links, and renders the CLI help from the parser. See the module docstring.
+hooks:
+  - docs/mkdocs_hooks.py
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - content.code.copy
+    - search.highlight
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - footnotes
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: numpy
+            show_source: false
+            show_root_heading: false
+            show_root_toc_entry: false
+            heading_level: 3
+            members_order: source
+            filters: ["!^_"]
+            show_signature_annotations: true
+            separate_signature: true
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Installation: installation.md
+      - Quick start: quickstart.md
+  - User guide:
+      - Command-line interface: cli.md
+      - Nextflow pipeline: nextflow.md
+      - Streamlit dashboard: dashboard.md
+  - Reference:
+      - Python API: api.md
+      - Methods: METHODS.md
+  - Validation:
+      - Real-data validation: validation.md
+      - Reproducing the results: REPRODUCING.md
+  - Project:
+      - Contributing: contributing.md
+      - Support and governance: support.md
+      - Code of conduct: code_of_conduct.md
+      - Changelog: changelog.md

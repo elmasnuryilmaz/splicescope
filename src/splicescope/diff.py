@@ -344,19 +344,26 @@ def differential_splicing(
 
     Parameters
     ----------
-    psi_df : a long Ψ table (e.g. from :func:`splicescope.quantify.compute_psi`
+    psi_df : pandas.DataFrame
+        A long Ψ table (e.g. from :func:`splicescope.quantify.compute_psi`
         or :func:`splicescope.events.event_psi`).
-    groups : mapping ``sample -> condition``; exactly two conditions expected.
-    value : which Ψ column to test.
-    min_samples : minimum informative (non-NaN) samples required *per group*.
-    key : grouping columns identifying a testable unit; defaults to the junction
+    groups : dict
+        Mapping ``sample -> condition``; exactly two conditions expected.
+    value : str
+        Which Ψ column to test.
+    min_samples : int
+        Minimum informative (non-NaN) samples required *per group*.
+    key : list of str, optional
+        Grouping columns identifying a testable unit; defaults to the junction
         coordinates ``[chrom, start, end, strand]``. Pass ``["event_id"]`` for
         event-level tests.
-    test : ``"auto"`` (beta-binomial when counts are present, else rank sum),
+    test : {"auto", "betabinom", "ranksum"}
+        ``"auto"`` (beta-binomial when counts are present, else rank sum),
         ``"betabinom"`` or ``"ranksum"``.
-    inc_col, total_col : count columns to model; inferred from ``value`` when
-        omitted.
-    dispersion : ``"shared"`` (default) uses one precision for every unit;
+    inc_col, total_col : str, optional
+        Count columns to model; inferred from ``value`` when omitted.
+    dispersion : {"shared", "per_unit_floor"}
+        ``"shared"`` (default) uses one precision for every unit;
         ``"per_unit_floor"`` additionally estimates each unit's own precision and
         takes the smaller of the two, which can only widen the null. Use it when
         dispersion is likely heterogeneous — the shared value is anti-conservative
@@ -366,8 +373,9 @@ def differential_splicing(
         dispersed units falls from 0.155 to 0.079 and the overall rate from 0.077
         to 0.039. Reproduce with ``validation/dispersion_trade.py``.
 
-    filter_invariant : set aside units whose Ψ is identical in every sample before
-        correcting for multiple testing. Neither test finds evidence in such a unit
+    filter_invariant : bool
+        Set aside units whose Ψ is identical in every sample before correcting for
+        multiple testing. Neither test finds evidence in such a unit
         whichever way the samples are labelled, so it cannot be rejected at any
         threshold — it is not a test that came out negative but one that could not be
         run. Most are structural: a constitutive donor with a single junction has Ψ ≡ 1
@@ -381,7 +389,10 @@ def differential_splicing(
         changes every q-value in a run; a warning says how many units it set aside.
         Reproduce with ``validation/invariant_units.py``.
 
-    Returns one row per unit, sorted by q-value.
+    Returns
+    -------
+    pandas.DataFrame
+        One row per unit, sorted by q-value.
     """
     conditions = sorted(set(groups.values()))
     if len(conditions) != 2:

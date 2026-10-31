@@ -1,0 +1,36 @@
+name: Draft PDF
+
+# Compiles the JOSS paper with the same Open Journals toolchain (inara) that JOSS uses,
+# and uploads paper.pdf as an artifact of the run. Taken from
+# https://github.com/openjournals/openjournals-draft-action, limited to the files the
+# paper is built from so that unrelated pushes do not rebuild it.
+on:
+  push:
+    paths:
+      - paper.md
+      - paper.bib
+      - .github/workflows/draft-pdf.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  paper:
+    runs-on: ubuntu-latest
+    name: Paper Draft
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Build draft PDF
+        uses: openjournals/openjournals-draft-action@master
+        with:
+          journal: joss
+          paper-path: paper.md
+      - name: Upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: paper
+          # inara writes the PDF next to paper.md
+          path: paper.pdf
+          archive: false

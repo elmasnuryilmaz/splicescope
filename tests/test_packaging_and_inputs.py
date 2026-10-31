@@ -625,6 +625,22 @@ def test_the_pipeline_declares_the_version_the_package_is():
     )
 
 
+def test_the_conda_profile_installs_the_version_the_package_is():
+    """The `conda` profile's environment pins splicescope from PyPI. A pin left behind at
+    a release would run a different version of the analysis than the pipeline declares,
+    and nothing would say so. (The `docker` profile reads the version from the manifest.)
+    """
+    import re
+
+    from splicescope import __version__ as version
+
+    env = (ROOT / "nextflow" / "environment.yml").read_text()
+    pinned = re.findall(r"^\s*-\s*splicescope==(\S+)\s*$", env, re.M)
+    assert pinned == [version], (
+        f"nextflow/environment.yml pins {pinned}, but the package is {version}"
+    )
+
+
 def test_the_python_floor_is_the_same_in_all_three_places_it_is_written():
     """`requires-python` is the promise; the CI matrix is what keeps it, the `oldest` job
     is what proves it, and the README badge is what a reader believes. Four places, one

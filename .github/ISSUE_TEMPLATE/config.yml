@@ -1,5 +1,8 @@
 blank_issues_enabled: true
 contact_links:
+  - name: Documentation
+    url: https://elmasnuryilmaz.github.io/splicescope/
+    about: Installation, quick start, CLI and API reference, the pipeline and the dashboard.
   - name: Method and statistics questions
     url: https://github.com/elmasnuryilmaz/splicescope/blob/main/docs/METHODS.md
     about: How Psi, the count-based test, consequence prediction and the classifier are defined.

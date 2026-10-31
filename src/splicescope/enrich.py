@@ -188,12 +188,16 @@ def over_representation(
 
     Parameters
     ----------
-    hits : the genes of interest (e.g. differentially spliced).
-    background : all genes that could have been a hit (the universe).
-    gene_sets : mapping of term -> member genes.
-    min_size, max_size : restrict to sets of this size *within the background*.
-
-    weights : per-gene opportunity (for splicing, the number of units tested in that
+    hits : iterable of str
+        The genes of interest (e.g. differentially spliced).
+    background : iterable of str
+        All genes that could have been a hit (the universe).
+    gene_sets : mapping
+        Term -> member genes.
+    min_size, max_size : int
+        Restrict to sets of this size *within the background*.
+    weights : mapping, optional
+        Per-gene opportunity (for splicing, the number of units tested in that
         gene). Supplied, the null stops assuming every gene was equally likely to be a
         hit: genes are binned by opportunity, each bin's observed hit rate becomes its
         members' propensity, and the set's p-value comes from Wallenius' non-central
@@ -203,9 +207,16 @@ def over_representation(
         significant junction. Omitted, the plain hypergeometric is used, which is what
         Wallenius becomes at odds 1.
 
-    Returns one row per tested set with the 2×2 counts, fold enrichment, p-value
-    and BH q-value, sorted by q-value, and carries :data:`RESULT_COLUMNS` whether or
-    not anything was tested. Uses the survival function
+    Returns
+    -------
+    pandas.DataFrame
+        One row per tested set with the 2×2 counts, fold enrichment, p-value and BH
+        q-value, sorted by q-value, and carries :data:`RESULT_COLUMNS` whether or not
+        anything was tested.
+
+    Notes
+    -----
+    Uses the survival function
     ``P(X ≥ k) = hypergeom.sf(k-1, M, n, N)`` with ``M`` background size, ``n`` set
     size in background, ``N`` number of hits in background, ``k`` the overlap, plus
     ``bias_odds`` when weights were given.

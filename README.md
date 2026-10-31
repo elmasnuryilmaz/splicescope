@@ -9,8 +9,9 @@
 [![Live demo](https://img.shields.io/badge/live%20demo-Streamlit-ff3d81)](https://splicescope.streamlit.app)
 [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/elmasnuryilmaz/splicescope/blob/main/examples/tutorial.ipynb)
 
+**📖 Documentation:** [elmasnuryilmaz.github.io/splicescope](https://elmasnuryilmaz.github.io/splicescope/) ·
 **▶ Try it live:** [splicescope on Streamlit](https://splicescope.streamlit.app) ·
-**📓 Guided tutorial:** [examples/tutorial.ipynb](examples/tutorial.ipynb) (executed, with outputs)
+**📓 Guided tutorial:** [examples/tutorial.ipynb](https://github.com/elmasnuryilmaz/splicescope/blob/main/examples/tutorial.ipynb) (executed, with outputs)
 
 Most of what we want to know about alternative and **cryptic** splicing is already
 present in the splice junctions aligners such as STAR report. `splicescope` turns those
@@ -23,7 +24,7 @@ events over noise.
 Everything runs out of the box on a built-in synthetic dataset — **no downloads, no
 private data** — which is also what the test suite and CI use.
 
-![splicescope showcase](docs/showcase.png)
+![splicescope showcase](https://raw.githubusercontent.com/elmasnuryilmaz/splicescope/main/docs/showcase.png)
 
 *One reproducible command produces every panel above: junction classes, a ΔΨ volcano,
 splicing events by type (SE / MXE / A5SS / A3SS), differential exon inclusion, **what
@@ -34,7 +35,7 @@ classifier's cross-validated ROC.*
 And the classifier degrades **gracefully** as labelling error grows — an honest robustness
 check rather than a single lucky number:
 
-<p align="center"><img src="docs/demo.gif" alt="cryptic classifier ROC vs. label noise" width="480"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/elmasnuryilmaz/splicescope/main/docs/demo.gif" alt="cryptic classifier ROC vs. label noise" width="480"></p>
 
 ---
 
@@ -53,9 +54,15 @@ everything else here. Measured against replication in an independent experiment 
 **worse than the statistical test** at ranking confidently reproducible events, because
 its features describe whether a junction is plausible, not whether it changes between
 conditions. Treat it as a noise filter, not as the way to find cryptic events; the numbers
-are in [validation/README.md](validation/README.md).
+are in [validation/README.md](https://github.com/elmasnuryilmaz/splicescope/blob/main/validation/README.md).
 
 ## Install
+
+```bash
+pip install splicescope            # add [app] for the Streamlit dashboard
+```
+
+or, to run the tests and work on the code, from a clone:
 
 ```bash
 git clone https://github.com/elmasnuryilmaz/splicescope.git
@@ -155,10 +162,10 @@ rather than only asserted.
 
 > **Formal definitions** — the Ψ metric, the differential-splicing statistics, the
 > classifier's leakage-free evaluation protocol and the simulation model are all
-> specified in **[docs/METHODS.md](docs/METHODS.md)**.
+> specified in **[docs/METHODS.md](https://github.com/elmasnuryilmaz/splicescope/blob/main/docs/METHODS.md)**.
 >
 > **Reproducing any of it** — every claim here, the command that checks it, and what the
-> auditing found, in **[docs/REPRODUCING.md](docs/REPRODUCING.md)**.
+> auditing found, in **[docs/REPRODUCING.md](https://github.com/elmasnuryilmaz/splicescope/blob/main/docs/REPRODUCING.md)**.
 
 ## Scaling & exploring
 
@@ -182,7 +189,7 @@ rather than only asserted.
 ## Testing
 
 ```bash
-pytest            # 361 tests: unit + property-based + end-to-end CLI runs
+pytest            # 365 tests: unit + property-based + end-to-end CLI runs
 ruff check .      # lint
 pytest --cov=splicescope   # 98 % of statements; CI fails below 90 %
 ```
@@ -237,7 +244,7 @@ observed 0.045–0.053 in simulation) and evidence now grows with coverage rathe
 with replicate count.
 
 The rank test is still reachable as `test="ranksum"` for Ψ tables that carry no counts.
-Formal definitions are in [docs/METHODS.md](docs/METHODS.md) §5.
+Formal definitions are in [docs/METHODS.md](https://github.com/elmasnuryilmaz/splicescope/blob/main/docs/METHODS.md) §5.
 
 ## Protein consequence
 
@@ -246,7 +253,7 @@ tolerated, shift the reading frame, or introduce a premature termination codon t
 the transcript to nonsense-mediated decay — which is how TDP-43 cryptic exons deplete
 proteins such as STMN2 and UNC13A.
 
-<p align="center"><img src="docs/nmd_rule.gif" alt="A premature stop codon moving towards the last exon-exon junction; past 50 nucleotides the transcript is degraded by nonsense-mediated decay, within 50 it escapes and a truncated protein is made" width="560"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/elmasnuryilmaz/splicescope/main/docs/nmd_rule.gif" alt="A premature stop codon moving towards the last exon-exon junction; past 50 nucleotides the transcript is degraded by nonsense-mediated decay, within 50 it escapes and a truncated protein is made" width="560"></p>
 
 *The whole of the prediction is one threshold. Every verdict in that animation comes from
 the function the pipeline uses, not from a drawing of the rule — regenerate it with
@@ -297,7 +304,7 @@ weakest of those genes sits at `q = 1.5e-02` and may not survive. What does not 
 the argument they were collected for: a rank test cannot clear Benjamini–Hochberg at 3
 against 3 and the count model clears it by more than a hundred orders of magnitude.
 Numbers, misses, the BAM-to-junction step and the full caveat are in
-[validation/README.md](validation/README.md).
+[validation/README.md](https://github.com/elmasnuryilmaz/splicescope/blob/main/validation/README.md).
 
 The classifier is a separate matter: its model card is explicit that it should be
 retrained on curated labels and validated on held-out genes before any real-data use.
@@ -306,9 +313,20 @@ reported alongside it for SE, MXE, A5SS and A3SS. Intron retention is the event 
 that is genuinely out of reach: it is measured from coverage *inside* the intron, which
 splice junctions do not carry.
 
+## Contributing and support
+
+Questions, bug reports and pull requests are welcome on the
+[issue tracker](https://github.com/elmasnuryilmaz/splicescope/issues). How to set up a
+development environment and what a pull request needs is in
+[CONTRIBUTING.md](https://github.com/elmasnuryilmaz/splicescope/blob/main/CONTRIBUTING.md);
+where to get help, what response to expect and how the project is governed is in
+[SUPPORT.md](https://github.com/elmasnuryilmaz/splicescope/blob/main/SUPPORT.md). Everyone
+taking part is expected to follow the
+[Code of Conduct](https://github.com/elmasnuryilmaz/splicescope/blob/main/CODE_OF_CONDUCT.md).
+
 ## Cite
 
-If you use `splicescope` in your research, please cite it (see [`CITATION.cff`](CITATION.cff)):
+If you use `splicescope` in your research, please cite it (see [`CITATION.cff`](https://github.com/elmasnuryilmaz/splicescope/blob/main/CITATION.cff)):
 
 > Yılmaz, E. (2026). *splicescope: detecting and characterizing cryptic splicing from
 > splice junctions* (v0.9.1). Zenodo. https://doi.org/10.5281/zenodo.22287002
@@ -322,4 +340,4 @@ to offer v0.8.1's as though there were.
 
 ## License
 
-MIT © Elmasnur Yılmaz — see [LICENSE](LICENSE).
+MIT © Elmasnur Yılmaz — see [LICENSE](https://github.com/elmasnuryilmaz/splicescope/blob/main/LICENSE).

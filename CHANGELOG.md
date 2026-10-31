@@ -6,7 +6,36 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- **A documentation website** (MkDocs with the Material theme, `mkdocs.yml`): installation,
+  quick start, a CLI reference generated from the parser, an API reference generated
+  from the docstrings (mkdocstrings), the Nextflow pipeline and the dashboard. The README,
+  `validation/README.md`, `CONTRIBUTING.md`, the code of conduct and this changelog are
+  included at build time by `docs/mkdocs_hooks.py` rather than copied, so the site cannot
+  drift from them. `.github/workflows/docs.yml` builds it with `--strict` on every pull
+  request and publishes it to GitHub Pages from `main`. Install the tools with the new
+  `site` extra.
+- **A JOSS paper draft**, `paper.md` and `paper.bib`, and `.github/workflows/draft-pdf.yml`,
+  which compiles it with the Open Journals toolchain. Placeholders marked `AUTHOR` remain.
+- **`.github/workflows/release.yml`**: builds, checks and publishes to PyPI through Trusted
+  Publishing when a `v*` tag is pushed, after checking that the tag names `__version__`.
+- **`SUPPORT.md`**: where to get help, what response to expect, and how the project is
+  governed. CONTRIBUTING and the README now point to it.
+
 ### Changed
+- **Packaging metadata uses an SPDX licence expression** (`license = "MIT"` with
+  `license-files`), as setuptools 77 and later expect; the table form and the licence
+  classifier it replaces are deprecated and stop being accepted in 2027. The build
+  backend floor is raised to `setuptools>=77` to match. The `Documentation` URL now points
+  to the website.
+- **The README's images and links into the repository are absolute URLs**, so that they
+  also work on the PyPI project page, which renders the README without the repository
+  around it. The README also gains a `pip install` line, a link to the website and a
+  "Contributing and support" section.
+- **Three docstrings follow the NumPy layout** (`io.read_star_sj`,
+  `diff.differential_splicing`, `enrich.over_representation`): their parameters carry
+  types and their return values have a `Returns` section, so the API reference renders
+  them instead of reading "Returns" as a parameter. The text is otherwise unchanged.
 - **The executed tutorial and both figures in `docs/` are regenerated.** They are built
   from the simulator, whose draw order changed when an intron stopped being allowed to
   hold two events, so their committed outputs no longer matched what the code produces —

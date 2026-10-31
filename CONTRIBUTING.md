@@ -3,6 +3,14 @@
 Thanks for your interest! This is a research-grade project; contributions and issues are
 welcome.
 
+## Reporting problems and asking questions
+
+Bugs, feature requests and questions all go to the
+[issue tracker](https://github.com/elmasnuryilmaz/splicescope/issues); the bug and
+feature templates ask for what is needed to act on them. [`SUPPORT.md`](SUPPORT.md) says
+where to look first, what response to expect, and how decisions about the project are
+made.
+
 ## Development setup
 
 ```bash
@@ -24,6 +32,14 @@ python examples/_build_tutorial.py     # the executed notebook
 python examples/generate_showcase.py   # docs/showcase.png
 python docs/make_demo_gif.py           # docs/demo.gif
 python docs/make_nmd_rule_gif.py       # docs/nmd_rule.gif
+```
+
+To preview the documentation website after changing a page, a docstring or the CLI:
+
+```bash
+pip install -e ".[site]"
+mkdocs serve                   # http://127.0.0.1:8000, rebuilt on every save
+mkdocs build --strict          # what CI runs: any broken link or docstring fails it
 ```
 
 CI runs the notebook and fails if the committed one no longer prints what the code

@@ -1,0 +1,70 @@
+name: Release to PyPI
+
+# Publishes the package to PyPI when a version tag (v0.9.1, v1.0.0, ...) is pushed. It uses
+# PyPI Trusted Publishing, so no API token is stored in the repository. One-time setup
+# before the first tag, on https://pypi.org/manage/account/publishing/ ("Add a new
+# pending publisher"): project name `splicescope`, owner `elmasnuryilmaz`, repository
+# `splicescope`, workflow `release.yml`, environment `pypi`. Then create the `pypi`
+# environment under Settings > Environments (optionally with a required reviewer).
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and check the distributions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: The tag must name the version the package declares
+        run: |
+          version=$(python -c "import re, pathlib; print(re.search(r'__version__ = \"([^\"]+)\"', pathlib.Path('src/splicescope/__init__.py').read_text()).group(1))")
+          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match __version__ ${version}"
+            exit 1
+          fi
+
+      - name: Build
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build
+          twine check --strict dist/*
+
+      - name: Install the wheel and run it
+        run: |
+          python -m venv /tmp/wheel-env
+          /tmp/wheel-env/bin/pip install dist/*.whl
+          /tmp/wheel-env/bin/splicescope --version
+          /tmp/wheel-env/bin/splicescope simulate --outdir /tmp/demo --genes 4
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/splicescope/
+    permissions:
+      id-token: write  # required for Trusted Publishing, and only in this job
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1

@@ -18,9 +18,9 @@ maintainer by email instead (the address is in `pyproject.toml` and `CITATION.cf
 
 ## What to expect
 
-splicescope is maintained by one person alongside research work. The maintainer aims to
-acknowledge new issues and pull requests within two weeks and to fix confirmed bugs that
-change results with priority over new features. A fix that changes any number in the
+splicescope is maintained by one person alongside research work, so issues and pull
+requests are answered on a best-effort basis. Confirmed bugs that change results are
+fixed with priority over new features. A fix that changes any number in the
 documentation is released with a changelog entry that says which numbers moved and why.
 
 ## Governance

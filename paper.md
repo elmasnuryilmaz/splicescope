@@ -9,13 +9,11 @@ tags:
   - nonsense-mediated decay
 authors:
   - name: Elmasnur Yılmaz
-    # AUTHOR: add your ORCID iD on the next line and uncomment it. CITATION.cff lists
-    # 0000-0001-9711-0203; confirm it is yours before using it here.
-    # orcid: 0000-0000-0000-0000
+    orcid: 0000-0001-9711-0203
     affiliation: 1
     corresponding: true
 affiliations:
-  - name: 'AUTHOR: department, institution, city, country'  # AUTHOR: replace
+  - name: Department of Biotechnology, Ege University, İzmir, Türkiye
     index: 1
 date: 31 October 2026
 bibliography: paper.bib
@@ -173,31 +171,20 @@ documentation therefore recommends using the prediction to interpret events that
 already significant, not to rank candidates. The per-event tables and the script that
 regenerates every one of these numbers are in the repository.
 
-AUTHOR: before submission, add concrete evidence of research use (for example a thesis
-chapter, preprint or analysis in which `splicescope` was used, and any users outside the
-author's group), and state whether a related manuscript describing the NMD validation is
-published, in review or in preparation, as JOSS asks for co-publications.
+<!-- Before submission: add concrete evidence of research use (a thesis chapter, preprint
+or analysis that used splicescope, and any users outside the author's group), and state
+whether a related manuscript on the NMD validation is published, in review or in
+preparation. JOSS screens for this; see the eligibility notes in pull request #1. -->
 
 # AI usage disclosure
 
-AUTHOR: complete this section truthfully before submission. JOSS requires the tools and
-model versions used, where they were used (code, tests, documentation, paper), the nature
-and scope of the assistance, and a statement that the human author reviewed, edited and
-validated all AI-assisted output and made the core design decisions.
-
-Known at the time of drafting: this paper, the documentation website configuration, the
-packaging, documentation and release workflows, and the contributor-facing support and
-governance notes were drafted with Claude Code (Anthropic), an AI coding assistant,
-in October 2026 (AUTHOR: add the model name and version). Every reference was checked
-against a bibliographic record, and quantitative statements were taken from the
-repository's validation documents and regenerated from its committed tables. AUTHOR: state
-whether and how generative AI was used in writing the software, tests and existing
-documentation, and confirm your review.
+Generative AI (Claude Code, Anthropic) was used to assist with software development,
+testing, documentation and the preparation of this paper. The author reviewed and edited
+all AI-assisted output and takes full responsibility for the software and the paper.
 
 # Acknowledgements
 
-AUTHOR: acknowledge colleagues and funding sources here, and state whether any funder was
-involved in the work. Declare any potential conflicts of interest, or state that there are
-none.
+<!-- Before submission: acknowledge colleagues and funding sources, say whether any funder
+was involved, and declare any conflicts of interest or state that there are none. -->
 
 # References

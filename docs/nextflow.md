@@ -52,14 +52,14 @@ Without `--genome` the consequence step is skipped and everything else runs.
 | profile | effect |
 |---|---|
 | `test` | a small simulated dataset on one CPU; what CI runs |
-| `docker` | runs each process in the `python:3.11-slim` container |
-| `conda` | runs each process in a conda environment with Python 3.11 and pip |
+| `docker` | runs each process in the `python:3.11-bookworm` container, after installing the splicescope release that matches the pipeline's version from PyPI inside it |
+| `conda` | runs each process in the conda environment `nextflow/environment.yml` (Python 3.11 and the matching splicescope release from PyPI) |
+| none | runs each process in your current environment, where `splicescope` must already be installed |
 
-!!! warning "The `docker` and `conda` profiles provide Python, not splicescope"
-    The container and the conda environment named in `nextflow/nextflow.config` do not
-    contain `splicescope`, so with those profiles the processes cannot find the
-    `splicescope` command. Until a container image with the package is published, run
-    the pipeline without them, in an environment where `splicescope` is installed.
+Both the `docker` and the `conda` profile need network access to PyPI. With `docker`, the
+install is part of each task's script, so it happens inside the container and never
+touches your own Python environment. The image is the full Debian one rather than
+`-slim` because Nextflow needs `ps` inside the container to record task metrics.
 
 ## What CI checks
 

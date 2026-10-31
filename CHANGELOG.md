@@ -16,11 +16,21 @@ All notable changes to this project are documented here. The format is based on
   request and publishes it to GitHub Pages from `main`. Install the tools with the new
   `site` extra.
 - **A JOSS paper draft**, `paper.md` and `paper.bib`, and `.github/workflows/draft-pdf.yml`,
-  which compiles it with the Open Journals toolchain. Placeholders marked `AUTHOR` remain.
+  which compiles it with the Open Journals toolchain.
 - **`.github/workflows/release.yml`**: builds, checks and publishes to PyPI through Trusted
   Publishing when a `v*` tag is pushed, after checking that the tag names `__version__`.
 - **`SUPPORT.md`**: where to get help, what response to expect, and how the project is
   governed. CONTRIBUTING and the README now point to it.
+
+### Fixed
+- **The Nextflow `docker` and `conda` profiles now run.** Both provided Python without
+  splicescope, so every process failed with `splicescope: command not found`, and the
+  `python:3.11-slim` image also lacks `ps`, which Nextflow needs inside the container. The
+  `docker` profile now uses `python:3.11-bookworm` and installs the release matching the
+  pipeline's version inside each task (in the task script, not a `beforeScript`, which
+  would run on the host and install into the user's own environment). The `conda` profile
+  uses the new `nextflow/environment.yml`, whose pin a new test keeps equal to
+  `__version__`. Both profiles were run end to end on the demo data.
 
 ### Changed
 - **Packaging metadata uses an SPDX licence expression** (`license = "MIT"` with

@@ -1,0 +1,11 @@
+# Conda environment for the `conda` profile of the Nextflow pipeline.
+# The splicescope pin must equal manifest.version in nextflow.config and
+# splicescope.__version__; tests/test_packaging_and_inputs.py checks this.
+name: splicescope
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - splicescope==0.9.1

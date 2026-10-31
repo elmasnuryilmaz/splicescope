@@ -70,12 +70,17 @@ def read_star_sj(path: str | Path, sample: str | None = None) -> pd.DataFrame:
 
     Parameters
     ----------
-    path : path to ``SJ.out.tab``.
-    sample : sample label; defaults to the file's stem.
+    path : str or pathlib.Path
+        Path to ``SJ.out.tab``.
+    sample : str, optional
+        Sample label; defaults to the name ``sample_name_from_path`` derives from the
+        file name.
 
-    Returns a DataFrame with columns
-    ``[chrom, start, end, strand, motif, annotated_star, count, sample]`` where
-    ``count`` is the number of uniquely-mapping reads crossing the junction.
+    Returns
+    -------
+    pandas.DataFrame
+        Columns ``[chrom, start, end, strand, motif, annotated_star, count, sample]``,
+        where ``count`` is the number of uniquely-mapping reads crossing the junction.
     """
     path = Path(path)
     sample = sample or sample_name_from_path(path)

@@ -329,7 +329,7 @@ taking part is expected to follow the
 If you use `splicescope` in your research, please cite it (see [`CITATION.cff`](https://github.com/elmasnuryilmaz/splicescope/blob/main/CITATION.cff)):
 
 > Yılmaz, E. (2026). *splicescope: detecting and characterizing cryptic splicing from
-> splice junctions* (v0.9.1). Zenodo. https://doi.org/10.5281/zenodo.22287002
+> splice junctions* (v0.10.0). Zenodo. https://doi.org/10.5281/zenodo.22287002
 
 The DOI above is the **concept DOI**: it always resolves to the most recent release, so
 it stays correct as the software evolves, and it is the one to cite. The only version DOI

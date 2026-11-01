@@ -332,11 +332,9 @@ If you use `splicescope` in your research, please cite it (see [`CITATION.cff`](
 > splice junctions* (v0.10.0). Zenodo. https://doi.org/10.5281/zenodo.22287002
 
 The DOI above is the **concept DOI**: it always resolves to the most recent release, so
-it stays correct as the software evolves, and it is the one to cite. The only version DOI
-minted so far belongs to **v0.8.1**, at
-[10.5281/zenodo.22287003](https://doi.org/10.5281/zenodo.22287003). Nothing since has been
-archived on Zenodo, so there is no identifier for this exact version — the line here used
-to offer v0.8.1's as though there were.
+it stays correct as the software evolves, and it is the one to cite. To cite this exact
+version, v0.10.0, use its version DOI,
+[10.5281/zenodo.23857335](https://doi.org/10.5281/zenodo.23857335).
 
 ## License
 

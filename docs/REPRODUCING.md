@@ -368,20 +368,7 @@ are worked examples.
 
 ## 6. What is left
 
-Four things, in the order they matter. None of them is code.
-
-**Reboot the Streamlit app.** <https://splicescope.streamlit.app> is still serving an
-older build — Streamlit Community Cloud has not redeployed on its own across many pushes.
-The README's *Live demo* badge points there, so a reader currently meets a weaker demo
-than the repository contains: the current page walks one cassette exon end to end and says
-in words what including it does to the protein. One click from the Streamlit dashboard.
-
-**Cut a release.** `CHANGELOG.md` records 0.9.0 and 0.9.1 as dated releases, but neither
-is tagged and neither has a GitHub release; the newest real release is v0.8.1. That is
-also why the citation is awkward: a version DOI is minted by archiving a release, so
-`CITATION.cff` lists one for v0.8.1 and the README has to say there is none for this
-version. Tagging closes both. The `Unreleased` section is large and behaviour-changing —
-p-values on count-based runs move — so a minor bump rather than a patch.
+Two things, in the order they matter. Neither is code.
 
 **Decide two defaults.** Both are off, both are measured, and both are judgment calls
 rather than bugs:

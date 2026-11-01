@@ -368,13 +368,7 @@ are worked examples.
 
 ## 6. What is left
 
-Three things, in the order they matter. None of them is code.
-
-**Reboot the Streamlit app.** <https://splicescope.streamlit.app> is still serving an
-older build — Streamlit Community Cloud has not redeployed on its own across many pushes.
-The README's *Live demo* badge points there, so a reader currently meets a weaker demo
-than the repository contains: the current page walks one cassette exon end to end and says
-in words what including it does to the protein. One click from the Streamlit dashboard.
+Two things, in the order they matter. Neither is code.
 
 **Decide two defaults.** Both are off, both are measured, and both are judgment calls
 rather than bugs:

@@ -23,6 +23,6 @@ from __future__ import annotations
 
 #: Single source of truth for the version: pyproject.toml reads this attribute, and a
 #: test keeps CITATION.cff and the CHANGELOG in step with it.
-__version__ = "0.9.1"
+__version__ = "0.10.0"
 
 __all__ = ["__version__"]

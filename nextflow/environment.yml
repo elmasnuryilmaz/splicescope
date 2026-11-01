@@ -8,4 +8,4 @@ dependencies:
   - python=3.11
   - pip
   - pip:
-      - splicescope==0.9.1
+      - splicescope==0.10.0

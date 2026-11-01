@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-11-01
+
 ### Added
 - **A documentation website** (MkDocs with the Material theme, `mkdocs.yml`): installation,
   quick start, a CLI reference generated from the parser, an API reference generated

@@ -6,6 +6,22 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **The pipeline's execution report and timeline were written to a directory named
+  `null`.** `nextflow.config` describes them as provenance and gives their paths as
+  `"${params.outdir}/pipeline_report.html"`, but `params.outdir` was defaulted only in
+  `main.nf`. Nextflow reads the config before the script, so at the moment those two
+  blocks were evaluated the value did not exist and Groovy interpolated it as `null`.
+  Every run that did not pass `--outdir` has done this since 0.1.0. Nothing raised: the
+  files were produced, just not beside the results, and `--outdir` on the command line
+  always worked because command-line parameters are set before the config is read —
+  which is why running it one way never showed the fault. The default now also lives in
+  `nextflow.config`, where those blocks can see it; `main.nf` keeps its own assignment,
+  which Nextflow treats as a default-if-unset. A new test holds the two halves together
+  (the provenance paths still resolve against `params.outdir`, and the config defaults
+  it), and the `ci.yml` demo step now asserts both files land in `results/` and that no
+  `null/` directory appears — the root cause was that nothing ever checked the path.
+
 ## [0.10.0] — 2026-11-01
 
 ### Added

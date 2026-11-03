@@ -146,6 +146,12 @@ jobs:
         run: |
           nextflow run nextflow/main.nf -profile test
           test -f results/out/differential_splicing.tsv
+          # the report and timeline are provenance, so they belong beside the results.
+          # They were written to null/ from 0.1.0 onwards because params.outdir had no
+          # default at the point nextflow.config interpolates it, and nothing looked.
+          test -f results/pipeline_report.html
+          test -f results/pipeline_timeline.html
+          test ! -d null
           # the simulator writes a genome, so demo mode reaches the consequence layer
           test -f results/out/consequence.tsv
           test -f results/out/junction_consequence.tsv

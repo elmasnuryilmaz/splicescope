@@ -641,6 +641,48 @@ def test_the_conda_profile_installs_the_version_the_package_is():
     )
 
 
+def test_the_execution_report_resolves_to_the_output_directory():
+    """The `report` and `timeline` blocks interpolate `params.outdir`, and Nextflow reads
+    `nextflow.config` before the script. The default was assigned only in `main.nf`, so
+    at the moment those blocks were evaluated the value did not exist and the paths came
+    out as `null/pipeline_report.html` — present since 0.1.0, in every default run, with
+    nothing raising: the files were written, just not beside the results. `--outdir` on
+    the command line always worked, which is why running it one way never showed it.
+
+    The default now lives in the config as well. This checks the two things that have to
+    hold together: the provenance paths are still relative to `params.outdir`, and
+    `params.outdir` has a default in this file rather than only in the script.
+    """
+    import re
+
+    config = (ROOT / "nextflow" / "nextflow.config").read_text()
+
+    # strip comments, so prose about the bug cannot satisfy the test
+    code = re.sub(r"//[^\n]*", "", config)
+
+    for block in ("report", "timeline"):
+        declared = re.search(rf"^\s*{block}\s*\{{[^}}]*\}}", code, re.M)
+        assert declared, f"the pipeline no longer configures a {block}"
+        assert "${params.outdir}" in declared.group(0), (
+            f"the {block} no longer writes into params.outdir: {declared.group(0)}"
+        )
+
+    default = re.search(r"^\s*params\.outdir\s*=\s*'([^']+)'", code, re.M)
+    assert default, (
+        "nextflow.config does not default params.outdir, so the report and timeline "
+        "paths resolve to null/ on any run that does not pass --outdir"
+    )
+
+    # and the script's own default has to agree, or the two disagree silently
+    script = re.sub(r"//[^\n]*", "", (ROOT / "nextflow" / "main.nf").read_text())
+    in_script = re.search(r"^\s*params\.outdir\s*=\s*'([^']+)'", script, re.M)
+    if in_script:
+        assert in_script.group(1) == default.group(1), (
+            f"nextflow.config defaults outdir to {default.group(1)!r} and main.nf to "
+            f"{in_script.group(1)!r}"
+        )
+
+
 def test_the_python_floor_is_the_same_in_all_three_places_it_is_written():
     """`requires-python` is the promise; the CI matrix is what keeps it, the `oldest` job
     is what proves it, and the README badge is what a reader believes. Four places, one

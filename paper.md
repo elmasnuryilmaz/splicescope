@@ -54,12 +54,13 @@ relative to the annotation, so that the classes a user filters on are defined ra
 implied.
 
 Second, small experiments are common in this field, and some convenient tests cannot
-succeed on them. A two-sided rank test on `n` replicates per group cannot return a p-value
-below $2/\binom{2n}{n}$, which is 0.1 for a three-versus-three design, so nothing survives
-Benjamini-Hochberg correction [@Benjamini1995] across tens of thousands of junctions,
-however large the effect. `splicescope` therefore tests the read counts that splice-site
-usage is computed from, with a beta-binomial likelihood-ratio test, so that evidence grows
-with coverage and not only with the number of replicates.
+succeed on them. An exact two-sided rank test on `n` replicates per group cannot return a
+p-value below $2/\binom{2n}{n}$, which is 0.1 for a three-versus-three design (about 0.05
+with ties), so nothing survives Benjamini-Hochberg correction [@Benjamini1995] across
+tens of thousands of junctions, however large the effect. `splicescope` therefore tests
+the read counts that splice-site usage is computed from, with a beta-binomial
+likelihood-ratio test, so that evidence grows with coverage and not only with the number
+of replicates.
 
 Third, detecting an event says nothing about its consequence. Whether a cryptic exon is
 tolerated, shifts the frame or triggers NMD decides whether it depletes the protein, as for
@@ -97,8 +98,8 @@ The build-versus-contribute choice followed from this. The consequence logic nee
 genome sequence, annotated coding sequences and per-event frame arithmetic, none of which
 is part of the statistical engines above, and those engines are written in different
 languages around different data models (event files, intron clusters, splice graphs). A
-small Python package that reads their outputs adds this layer to all of them, which is why
-`splicescope consequence` accepts event tables produced elsewhere.
+small Python package that reads their candidate coordinates adds this layer to all of
+them, which is why `splicescope consequence` accepts event tables produced elsewhere.
 
 # Software design
 
@@ -140,8 +141,8 @@ with Hypothesis [@MacIver2019]. Continuous integration runs it on Python 3.10 to
 on the oldest declared dependency versions, executes the tutorial notebook, runs the
 Nextflow pipeline on its demonstration and real-data input paths and renders the dashboard
 headlessly. A mutation survey deliberately breaks the code in plausible ways and reports
-any change the suite fails to detect, and numbers quoted in the documentation are checked
-by tests against the code that produces them.
+any change the suite fails to detect, and simulation results quoted in the documentation
+are checked by tests against the code that produces them.
 
 # Research impact statement
 
@@ -181,6 +182,13 @@ or analysis that used splicescope, and any users outside the author's group), an
 whether a related manuscript on the NMD validation is published, in review or in
 preparation. JOSS screens for this; see the eligibility notes in pull request #1. -->
 
+<!-- Before submission: the GSE245332 figures in this paper (138,643 rank tests, the eight
+recovered genes, the 1.5-minute runtime, the classifier's average precision) come from
+versions up to 0.8.1. Re-measure them with the release being submitted, and make the
+junction tables and the script that produces them available, because JOSS requires
+reported analyses to be reproducible by reviewers:
+https://joss.readthedocs.io/en/latest/policies.html#data-sharing-policy -->
+
 # AI usage disclosure
 
 Generative AI (Claude Code, Anthropic) was used to assist with software development,
@@ -190,6 +198,12 @@ suite and continuous integration described above, by regenerating the quoted
 NMD-validation numbers from the committed tables, and by checking every reference against
 a bibliographic record. The author takes full responsibility for the software and the
 paper.
+
+<!-- Before submission: JOSS's AI policy asks for the versions of the tools or models used
+and where each was used (code, documentation, paper text), the nature of the help (for
+example code generation, refactoring, test scaffolding, drafting, copy-editing), and an
+explicit statement that the author made the core design decisions:
+https://joss.readthedocs.io/en/latest/submitting.html#ai-usage-policy -->
 
 # Acknowledgements
 

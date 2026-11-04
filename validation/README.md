@@ -20,11 +20,22 @@ Reads were aligned with HISAT2; the BAMs total ~24 GB.
 `extract_sj.sh` derives the same table from any coordinate-sorted BAM: junctions are the
 `N` operations of the CIGAR, strand comes from the `XS:A` tag and uniqueness from `NH:i`.
 
+As in STAR, each intron is one row holding every read that crosses it. HISAT2 puts
+`XS:A` on only some of an intron's reads, so the strand is the majority among the tagged
+reads, and 0 (undefined) when none is tagged or `+` and `-` are tied; `splicescope` then
+takes the strand from the annotation wherever it knows the intron or one of its splice
+sites. The motif and annotation columns are left at 0, since the script reads neither
+genome nor GTF; `add_motifs.py` fills in the motif from the genome and resets the strand
+wherever the motif is canonical. The rule and its reasons are at the top of
+`bam2sj.awk`.
+
 ```bash
 ./validation/extract_sj.sh /path/to/bam_dir /path/to/sj_dir
 ```
 
-Six BAMs yielded 1,977,980 junction records (848,749 distinct junctions).
+Six BAMs yielded 1,977,980 junction records (848,749 distinct junctions). These counts
+were taken before the script wrote one row per intron, when an intron with both tagged
+and untagged reads came out as two rows, and they have not been re-measured.
 
 ## Running
 

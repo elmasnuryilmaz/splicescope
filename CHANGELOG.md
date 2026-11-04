@@ -21,6 +21,7 @@ All notable changes to this project are documented here. The format is based on
   (the provenance paths still resolve against `params.outdir`, and the config defaults
   it), and the `ci.yml` demo step now asserts both files land in `results/` and that no
   `null/` directory appears — the root cause was that nothing ever checked the path.
+- **`validation/bam2sj.awk` writes one row per intron.** It keyed rows on the `XS:A` tag as well, so an intron with tagged and untagged HISAT2 reads came out as two rows and `compute_psi` refused the table; the strand is now the majority of the tagged reads, 0 on a tie (`tests/test_bam2sj.py`).
 
 ## [0.10.0] — 2026-11-01
 

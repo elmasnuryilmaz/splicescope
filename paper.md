@@ -57,9 +57,10 @@ Second, small experiments are common in this field, and some convenient tests ca
 succeed on them. An exact two-sided rank test on `n` replicates per group cannot return a
 p-value below $2/\binom{2n}{n}$, which is 0.1 for a three-versus-three design (about 0.05
 with ties), so nothing survives Benjamini-Hochberg correction [@Benjamini1995] across
-tens of thousands of junctions, however large the effect. `splicescope` therefore tests the read counts that splice-site
-usage is computed from, with a beta-binomial likelihood-ratio test, so that evidence grows
-with coverage and not only with the number of replicates.
+tens of thousands of junctions, however large the effect. `splicescope` therefore tests
+the read counts that splice-site usage is computed from, with a beta-binomial
+likelihood-ratio test, so that evidence grows with coverage and not only with the number
+of replicates.
 
 Third, detecting an event says nothing about its consequence. Whether a cryptic exon is
 tolerated, shifts the frame or triggers NMD decides whether it depletes the protein, as for

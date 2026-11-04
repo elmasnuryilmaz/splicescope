@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- **CI runs the pipeline's `docker` and `conda` profiles** on a wheel of the commit under
+  test, which `-profile docker` takes through the new `--splicescope_wheel` parameter.
+
 ### Fixed
 - **The pipeline's execution report and timeline were written to a directory named
   `null`.** `nextflow.config` describes them as provenance and gives their paths as

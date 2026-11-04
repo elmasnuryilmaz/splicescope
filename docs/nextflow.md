@@ -46,6 +46,7 @@ Without `--genome` the consequence step is skipped and everything else runs.
 | `--min_reads` | 10 | minimum reads at a splice site in a sample for its Ψ to be computed |
 | `--outdir` | `results` | where results are published |
 | `--genes`, `--replicates` | 12, 6 | size of the simulated dataset in demo mode |
+| `--splicescope_wheel` | none | with `-profile docker` only: a splicescope wheel to install in each task instead of the release, e.g. one built from a checkout with `pip wheel --no-deps --wheel-dir dist .` |
 
 ## Profiles
 
@@ -67,3 +68,11 @@ Every push runs the pipeline three ways: demo mode, real-data mode with the inpu
 separate directories, and real-data mode without a genome (which must skip the
 consequence step). See the `nextflow` job in
 [`.github/workflows/ci.yml`](https://github.com/elmasnuryilmaz/splicescope/blob/main/.github/workflows/ci.yml).
+
+The `nextflow-profiles` job runs demo mode with the `docker` and the `conda` profile, on a
+runner where splicescope is not installed, and checks that both write the same tables as
+a run without a profile. It installs a wheel built from the commit under test rather than
+the release from PyPI (`--splicescope_wheel` for `docker`, and for `conda` a copy of
+`nextflow/environment.yml` with the pin replaced by the wheel), so it tests the change
+itself and still passes on the pull request that raises the version. What it does not
+cover is the release download: that the pinned version is on PyPI.

@@ -181,3 +181,113 @@ jobs:
             --groups "$PWD/inputs/design.tsv"
           test -f bare_results/out/events.tsv
           test ! -f bare_results/out/consequence.tsv
+
+  nextflow-profiles:
+    # The `docker` and `conda` profiles are how someone without a Python environment of
+    # their own runs the pipeline, and the job above never touches them: its three runs are
+    # profile-less, against `pip install -e .`. Every fault those profiles have had (an
+    # image with Python but no splicescope, a beforeScript that installed on the host, an
+    # image without the `ps` that Nextflow needs) shows only inside the container or env.
+    #
+    # Both profiles install the release named by manifest.version from PyPI. Run as they
+    # are, they would test the last release rather than this change, and they would fail
+    # on the pull request that raises the version, since PyPI has nothing under it until
+    # the tag is pushed. So each installs a wheel of this checkout instead, through the
+    # profile's own route: --splicescope_wheel for docker, the profile's environment file
+    # with its pin swapped for the wheel for conda. That the pin equals __version__ is the
+    # test suite's job.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # the docker image's and the conda environment's Python, so the comparison at
+          # the end is like for like
+          python-version: "3.11"
+          cache: pip
+
+      - name: Build a wheel of this checkout, without installing it here
+        # splicescope stays off this machine until the reference run, so a profile run
+        # that used the host's copy, or installed into it, cannot pass unnoticed
+        run: |
+          python -m pip install --upgrade pip
+          pip wheel --no-deps --wheel-dir dist .
+          echo "WHEEL=$PWD/$(ls dist/splicescope-*.whl)" >> "$GITHUB_ENV"
+
+      - uses: nf-core/setup-nextflow@v2
+
+      - name: Install Miniforge
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/miniforge.sh" \
+            https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh
+          bash "$RUNNER_TEMP/miniforge.sh" -b -p "$RUNNER_TEMP/miniforge"
+          echo "$RUNNER_TEMP/miniforge/condabin" >> "$GITHUB_PATH"
+
+      - name: Demo mode with the docker profile
+        run: |
+          nextflow run nextflow/main.nf -profile test,docker --splicescope_wheel "$WHEEL"
+          test -f results/out/differential_splicing.tsv
+          test -f results/out/junction_consequence.tsv
+          test -f results/pipeline_report.html
+          test -f results/pipeline_timeline.html
+          test ! -d null
+          # both processes ran in the profile's image and installed the wheel there
+          nextflow log last -f name,container,workdir | tee tasks.tsv
+          test "$(wc -l < tasks.tsv)" -eq 2
+          test "$(cut -f2 tasks.tsv | sort -u)" = \
+            "$(nextflow config nextflow -profile docker -value process.container)"
+          for dir in $(cut -f3 tasks.tsv); do
+            grep -qF "./$(basename "$WHEEL")" "$dir/.command.sh"
+          done
+
+      - name: Demo mode with the conda profile
+        run: |
+          sed "s|splicescope==.*|$WHEEL|" nextflow/environment.yml > ci-environment.yml
+          # the release pin has to be gone, or this would quietly test the release
+          if grep -q "splicescope==" ci-environment.yml; then exit 1; fi
+          grep -qF "$WHEEL" ci-environment.yml
+          nextflow run nextflow/main.nf -profile test,conda \
+            -with-conda "$PWD/ci-environment.yml" --outdir conda_results
+          test -f conda_results/out/differential_splicing.tsv
+          test -f conda_results/out/junction_consequence.tsv
+          test -f conda_results/pipeline_report.html
+          # the environment Nextflow built holds the wheel, not a download from PyPI
+          env=$(ls -d work/conda/env-*)
+          "$env/bin/python" -c "import importlib.metadata as m; print(m.distribution('splicescope').read_text('direct_url.json'))" \
+            | grep -F "$(basename "$WHEEL")"
+
+      - name: Neither profile used or changed this machine's Python
+        run: |
+          if python -c "import splicescope" 2>/dev/null || command -v splicescope; then
+            echo "::error::splicescope is installed on the runner itself"
+            exit 1
+          fi
+
+      - name: Demo mode without a profile, as the reference
+        run: |
+          pip install -e .
+          nextflow run nextflow/main.nf -profile test --outdir host_results
+
+      - name: The docker and conda runs write the reference's tables
+        # same seed, same code, same Python minor version; the tolerance only absorbs a
+        # dependency release landing between the three installs
+        shell: python
+        run: |
+          from pathlib import Path
+
+          import pandas as pd
+
+          reference = Path("host_results/out")
+          tables = sorted(p.name for p in reference.glob("*.tsv"))
+          assert "differential_splicing.tsv" in tables, tables
+          for run in ("results", "conda_results"):
+              out = Path(run) / "out"
+              assert sorted(p.name for p in out.glob("*.tsv")) == tables, f"{run} differs"
+              for name in tables:
+                  ref = pd.read_csv(reference / name, sep="\t")
+                  got = pd.read_csv(out / name, sep="\t")
+                  pd.testing.assert_frame_equal(got, ref, check_exact=False, rtol=1e-6)
+                  how = "identical" if got.equals(ref) else "equal within rtol 1e-6"
+                  print(f"{run}/out/{name}: {len(ref)} rows, {how}")

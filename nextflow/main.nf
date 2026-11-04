@@ -25,20 +25,31 @@ params.groups     = null
 params.genome     = null   // indexed FASTA; enables protein-consequence prediction
 params.min_reads  = 10
 params.install_splicescope = false   // set by the docker profile; see installCommand()
+params.splicescope_wheel   = null    // docker profile only: install this wheel, not the release
 
 // With the docker profile each task first installs the splicescope release that matches
 // this pipeline's version. The install is part of the task script, so it runs inside the
 // throwaway container, never in the user's own environment (a beforeScript would run on
 // the host). Without the profile this is empty and splicescope must already be installed.
-def installCommand() {
-    params.install_splicescope
-        ? "pip install --quiet --no-cache-dir --disable-pip-version-check --root-user-action=ignore 'splicescope==${workflow.manifest.version}'"
-        : ''
+//
+// --splicescope_wheel replaces the release with a wheel built from a checkout, staged into
+// each task as an input so that any container engine can see it. CI uses it to run the
+// code under review in the container: the release is the last published code, and the
+// pull request that raises the version names one PyPI does not have yet.
+def installCommand(wheel) {
+    if (!params.install_splicescope) {
+        return ''
+    }
+    def target = wheel ? "./${wheel}" : "'splicescope==${workflow.manifest.version}'"
+    "pip install --quiet --no-cache-dir --disable-pip-version-check --root-user-action=ignore ${target}"
 }
 
 process SIMULATE {
     tag 'simulate'
     publishDir "${params.outdir}/data", mode: 'copy'
+
+    input:
+    path wheel          // empty, or the wheel to install; see installCommand()
 
     output:
     path 'demo_data/sj',             emit: sj
@@ -48,7 +59,7 @@ process SIMULATE {
 
     script:
     """
-    ${installCommand()}
+    ${installCommand(wheel)}
     splicescope simulate --outdir demo_data \\
         --genes ${params.genes} --replicates ${params.replicates}
     """
@@ -64,13 +75,14 @@ process SPLICESCOPE_RUN {
     path groups
     path genome_files   // empty, or the FASTA plus its .fai
     val  genome_arg     // '' when no genome was given
+    path wheel          // empty, or the wheel to install; see installCommand()
 
     output:
     path 'out', emit: results
 
     script:
     """
-    ${installCommand()}
+    ${installCommand(wheel)}
     splicescope run \\
         --sj-dir ${sj_dir} \\
         --gtf ${gtf} \\
@@ -82,6 +94,15 @@ process SPLICESCOPE_RUN {
 }
 
 workflow {
+    // a wheel given without the docker profile would be silently ignored, and the run
+    // would use whatever splicescope the environment has instead of the code asked for
+    if (params.splicescope_wheel && !params.install_splicescope) {
+        error "--splicescope_wheel is only used with -profile docker, which installs splicescope in each task"
+    }
+    wheel = params.splicescope_wheel
+        ? Channel.value(file(params.splicescope_wheel, checkIfExists: true))
+        : Channel.value([])
+
     if (params.sj_dir && params.gtf && params.groups) {
         // real-data mode: each input is staged separately, so they may live anywhere.
         // Previously a single channel was passed for all three and the script then
@@ -104,7 +125,7 @@ workflow {
     } else {
         // self-contained demo mode: the simulator writes a genome too, so the
         // consequence layer runs here as well.
-        SIMULATE()
+        SIMULATE(wheel)
         sj_dir       = SIMULATE.out.sj
         gtf          = SIMULATE.out.gtf
         groups       = SIMULATE.out.groups
@@ -112,5 +133,5 @@ workflow {
         genome_arg   = Channel.value('--genome genome.fa')
     }
 
-    SPLICESCOPE_RUN(sj_dir, gtf, groups, genome_files, genome_arg)
+    SPLICESCOPE_RUN(sj_dir, gtf, groups, genome_files, genome_arg, wheel)
 }
